@@ -1734,7 +1734,7 @@ datatable(stat.test)
 ```
 
 ### Figure 3c
-```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
+```{r, fig.width = 6, fig.height = 5, fig.align = 'center'}
 abundances_TPM <- Mastertable_viral %>%
   filter(Final_viral == "Good-quality phages") %>%
   select(c("CONTIGS", "length"), all_of(samples), all_of(grep("^Final", colnames(Mastertable_viral)))) %>%
@@ -1781,8 +1781,9 @@ ggplot(data_plot, aes(x = FEVPC, y = observed_richness, color = CURRCOPD)) +
   labs(x = "FEV1 (% predicted)", y = "Observed Richness\nof Phage OTUs") +
   scale_y_continuous(breaks = seq(0, 10, by = 2)) +
   theme_minimal() +
-  theme(legend.position = "none",
-        panel.grid.major.y = element_line(size = 1.2)) +
+  theme(panel.grid.major.y = element_line(size = 1.2),
+        legend.title = element_blank(),
+        legend.position = "bottom") +
   annotate("text", x = max(data_plot$FEVPC, na.rm = TRUE), y = max(data_plot$observed_richness,na.rm = TRUE), 
            label = paste0("Negative binomial mixed-effects model:\nIRR = ", round(IRR, 2), 
                           " (95% CI = ", round(CI_IRR[1], 2), "-", round(CI_IRR[2], 2), "), p = ", round(p, 3)), 
@@ -1792,7 +1793,7 @@ ggplot(data_plot, aes(x = FEVPC, y = observed_richness, color = CURRCOPD)) +
 datatable(stat.test)
 ```
 
-```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
+```{r, fig.width = 6, fig.height = 5, fig.align = 'center'}
 model <- glmmTMB(shannon_diversity ~ FEVPC + (1|PID), family = tweedie(), data = data_plot)
 
 sim <- simulateResiduals(model)
@@ -1816,8 +1817,9 @@ ggplot(data_plot, aes(x = FEVPC, y = shannon_diversity, color = CURRCOPD)) +
   labs(x = "FEV1 (% predicted)", y = "Shannon Diversity Index\nof Phage OTUs") +
   theme_minimal() +
   scale_y_continuous(breaks = seq(0, 2, by = 0.5)) +
-  theme(legend.position = "none",
-        panel.grid.major.y = element_line(size = 1.2)) +
+  theme(panel.grid.major.y = element_line(size = 1.2),
+        legend.title = element_blank(),
+        legend.position = "bottom") +
   annotate("text", x = max(data_plot$FEVPC, na.rm = TRUE), y = max(data_plot$shannon_diversity, na.rm = TRUE), 
            label = paste0("Tweedie GLMM:\nIRR = ", round(IRR, 2), 
                           " (95% CI = ", round(CI_IRR[1], 2), "-", round(CI_IRR[2], 2), "), p = ", round(p, 3)), 
@@ -2485,12 +2487,10 @@ class_lifestyle_combo <- data_plot %>%
 stat_results <- pmap(class_lifestyle_combo, function(...) {
   class_val <- list(...)[[1]]
   lifestyle_val <- list(...)[[2]]
-  print(paste("Processing:", class_val, lifestyle_val))
   
   df <- data_plot %>%
     filter(Final_Class == class_val) %>%
     filter(replidec_lifestyle == lifestyle_val)
-  print(nrow(df))
   
   model <- glmmTMB(
     TPM ~ ExaSev + (1|PID),
@@ -5105,71 +5105,6 @@ ggplot(data_plot, (aes(x=Exa_or_stable, y = TPM))) +
         panel.grid.major.x = element_blank(),
         panel.grid.minor.y = element_blank(),
         strip.text = element_text(margin = margin(b = 20, t = 10)),
-        legend.position = "none") +
-  scale_y_continuous(labels = comma) +
-  scale_x_discrete(labels = setNames(sample_size$N, sample_size$Exa_or_stable)) +
-  facet_wrap(~Host_Genus, scales = "free_x", strip.position = "top", ncol = 5) +
-  stat_pvalue_manual(stat.test, label = "p.signif", hide.ns = TRUE, tip.length = 0) +
-  coord_cartesian(ylim = c(0, 1000000), clip = "off")
-```
-
-## Figure S12
-```{r, fig.width = 11, fig.height = 12, fig.align = 'center'}
-samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
-  select(all_of(samples)) %>%
-  summarise(across(everything(), sum, na.rm = TRUE)) %>%
-  select_if(~ . > 0) %>%
-  colnames()
-
-abundances_TPM_pos_only <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
-  select(c("CONTIGS", "length"), all_of(samples_with_reads), all_of(grep("^Host", colnames(Mastertable_viral)))) %>%
-  pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
-
-abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
-
-data_plot <- abundances_TPM_pos_only %>%
-  group_by(sample_ID, Host_Genus) %>%
-  summarize(RPK = sum(RPK), .groups = 'drop')
-
-data_plot <- data_plot %>%
-  group_by(sample_ID) %>%
-  mutate(RPK_total = sum(RPK),
-         TPM = (RPK / RPK_total) * 10^6)
-
-data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
-
-data_plot <- data_plot %>%
-  group_by(Exa_or_stable, Host_Genus) %>%
-  mutate(N_samples = n(), .groups = "drop",
-         Exa_or_stable = factor(Exa_or_stable, levels = c("Stable_state", "Exacerbated_state")))
-
-data_plot$Host_Genus[is.na(data_plot$Host_Genus)] <- "No iPHoP hit"
-
-sample_size <- data_plot %>% 
-  group_by(Exa_or_stable) %>% 
-  summarise(N_samples = unique(N_samples), .groups = "drop") %>%
-  mutate(N = ifelse(Exa_or_stable == "Exacerbated_state",
-                    paste0("Exacerbations\nN=", N_samples),
-                    paste0("Stable state\nN=", N_samples)))
-
-stat.test <- data_plot %>% 
-  group_by(Host_Genus) %>%
-  wilcox_test(TPM ~ Exa_or_stable, paired = FALSE) %>%
-  add_significance() %>%
-  add_y_position()
-
-ggplot(data_plot, (aes(x=Exa_or_stable, y = TPM))) +
-  geom_boxplot(aes(color = Host_Genus, fill = Host_Genus), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = Host_Genus), width = 0.2, height = 0, size = 2, alpha = 0.3) +
-  scale_fill_manual(values = MyColorsHostGenus) +
-  scale_color_manual(values = MyColorsHostGenus) +
-  labs(x = "", y = "TPM") +
-  theme_minimal() +
-  theme(text = element_text(size = 12),
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor.y = element_blank(),
         legend.position = "none") +
   scale_y_continuous(labels = comma) +
   scale_x_discrete(labels = setNames(sample_size$N, sample_size$Exa_or_stable)) +
