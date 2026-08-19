@@ -4832,8 +4832,6 @@ ggplot(data = data_summary, aes(x = Exa_or_stable_ExaSev, y = mean, fill = Genus
         axis.title.y = element_text(size = 12),
         legend.text = element_text(size = 8),
         legend.title = element_text(size = 12))
-
-
 ```
 
 ### Figure S11b
@@ -5807,4 +5805,3 @@ ggplot(data_plot, aes(x = sample_ID, y = TPM, fill = Final_Family)) +
   expand_limits(y = -50000) +
   facet_wrap(~PID, scales = "free", ncol = 4)
 ```
-
