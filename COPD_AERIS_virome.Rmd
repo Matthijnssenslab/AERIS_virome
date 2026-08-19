@@ -2357,7 +2357,7 @@ datatable(stat.test)
 ## Figure 5
 
 ### Figure 5a
-```{r, fig.width = 15, fig.height = 6, fig.align = 'center'}
+```{r, fig.width = 14, fig.height = 10, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
   filter(Final_viral == "Good-quality phages") %>%
   select(all_of(samples)) %>%
@@ -2426,10 +2426,12 @@ ggplot(data = data_summary, aes(x = Exa_or_stable_ExaSev, y = mean, fill = Final
   geom_text(aes(label = AAI_number), position = position_stack(vjust = 0.5), size = 2, color = "black")+
   scale_y_continuous(expand=c(0,0)) +
   labs(x = "", y = "Relative Abundance of Phage Family-Clusters\nin Transcripts Per Kilobase Million (TPM)", fill = "Phage Family")  +
-  scale_fill_manual(values=MyColorsPhageFamiliesN, guide = guide_legend(ncol = 1)) +
+  scale_fill_manual(values=MyColorsPhageFamiliesN, guide = guide_legend(ncol = 3)) +
   scale_x_discrete(labels = x_labels) + 
   theme_minimal() +
-  theme(text = element_text(size = 12))
+  theme(text = element_text(size = 12),
+        legend.position = "bottom",
+        legend.key.spacing.y = unit(0, "cm"))
 ```
 
 ### Figure 5b
