@@ -22,7 +22,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
 
 ```{r include=TRUE, results="hide"}
-packages <- c("cowplot", "decontam", "dplyr", "DT", "ggbreak", "gggenomes", "ggnewscale",   "ggplot2", "ggpubr", "ggtext", "ggtree", "ggvenn", "here", "pals", "patchwork", "phyloseq", "RColorBrewer", "readr", "readxl", "rstatix", "scales", "tidyverse", "vegan", "wesanderson")
+packages <- c("cowplot", "decontam", "dplyr", "DT", "ggbreak", "gggenomes", "ggnewscale",   "ggplot2", "ggpubr", "ggtext", "ggtree", "ggvenn", "here", "lme4", "lmerTest", "glmmTMB", "emmeans", "DHARMa", "pals", "patchwork", "phyloseq", "RColorBrewer", "readr", "readxl", "rstatix", "scales", "tidyverse", "vegan", "wesanderson")
 lapply(packages, library, character.only = TRUE)
 setwd(here())
 ```
@@ -784,8 +784,7 @@ Colors for phage classes:
 ```{r echo=FALSE}
 MyColorsPhageClasses <- c("Caudoviricetes" = "#80B1D3",
                           "Faserviricetes" = "#FC8D62",
-                          "Malgrandaviricetes" = "#CCEBC5",
-                          "Unclassified viruses" = "#BC80BD")
+                          "Malgrandaviricetes" = "#CCEBC5")
 ```
 
 ```{r echo=FALSE, fig.width=7, fig.height=4, fig.align='center'}
@@ -796,7 +795,14 @@ Colors for family-level phage clusters:
 ```{r echo=FALSE}
 palette_blue <- colorRampPalette(brewer.pal(n=3, name = "Blues"))(30)
 
+excluded_caudo <- c(
+  "Unclassified Caudoviricetes:FamilyAAI_31_Peduoviridae",
+  "Unclassified Caudoviricetes:FamilyAAI_51_Orlajensenviridae",
+  "Unclassified Caudoviricetes:FamilyAAI_54_Salasmaviridae",
+  "Unclassified Caudoviricetes:FamilyAAI_8_Aliceevansviridae")
+
 unclassified_caudo <- grep("^Unclassified Caudoviricetes", unique(Mastertable_viral$Final_FamilyN), value = TRUE)
+unclassified_caudo <- setdiff(unclassified_caudo, excluded_caudo)
 unclassified_caudo_colors <- setNames(palette_blue[seq_along(unclassified_caudo)], unclassified_caudo)
 
 palette_green <- brewer.pal(n=9, name = "Greens")[2:5]
@@ -813,9 +819,12 @@ MyColorsPhageFamiliesN <- c(ino_colors,
                             micro_colors,
                             "Rountreeviridae:FamilyAAI_55_Rountreeviridae" = "#8ac1ff",
                             "Schitoviridae:FamilyAAI_30_Schitoviridae" = "#8DA0CB",
+                            "Unclassified Caudoviricetes:FamilyAAI_31_Peduoviridae" = "#97ddfc",
+                            "Unclassified Caudoviricetes:FamilyAAI_51_Orlajensenviridae" = "#3488ad",
+                            "Unclassified Caudoviricetes:FamilyAAI_54_Salasmaviridae" = "#c7eeff",
+                            "Unclassified Caudoviricetes:FamilyAAI_8_Aliceevansviridae" = "#3886BF",
                             unclassified_caudo_colors,
-                            "Unclassified Crassvirales:FamilyAAI_134_Suoliviridae" = "#ffd8c3",
-                            "Unclassified viruses:FamilyAAI_525" = "#BC80BD")
+                            "Unclassified Crassvirales:FamilyAAI_134_Suoliviridae" = "#ffd8c3")
 ```
 
 ```{r echo=FALSE, fig.width=12, fig.height=7, fig.align='center'}
@@ -1171,7 +1180,7 @@ ggplot(data_plot, aes(x = viral_categories, y = nb_of_contigs, fill = viral_cate
 ## Figure 2
 
 ### Figure 2a
-```{r, fig.align = 'center'}
+```{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
   filter(Final_viral == "Eukaryotic viruses") %>%
   select(all_of(samples)) %>%
@@ -1230,7 +1239,7 @@ x_labels <- setNames(sample_size$N, sample_size$Exa_or_stable)
 ggplot(data = data_summary, aes(x = Exa_or_stable, y = mean, fill = Final_Family)) +
   geom_bar(stat = "identity") + 
   scale_y_continuous(expand=c(0,0)) +
-  labs(x = "", y = "Transcripts Per Kilobase Million (TPM)", fill = "Viral Family")  +
+  labs(x = "", y = "Relative Abundance of Eukaryotic Viral Families\nin Transcripts Per Kilobase Million (TPM)", fill = "Viral Family")  +
   scale_fill_manual(values=MyColorsViralFamilies, drop = TRUE) +
   scale_x_discrete(labels = x_labels) +
   theme_minimal() +
@@ -1270,7 +1279,8 @@ data_plot <- abundances_TPM %>%
     Exa_or_stable == "Exacerbated_state" & EXAViral == "1" ~ "Viral\nexacerbations",
     Exa_or_stable == "Exacerbated_state" & EXAViral == "0" ~ "Non-viral\nexacerbations",
     Exa_or_stable == "Exacerbated_state" & is.na(EXAViral) ~ "Non-viral\nexacerbations")) %>%
-  mutate(Exa_or_stable = factor(Exa_or_stable, levels = c("Stable state", "Viral\nexacerbations", "Non-viral\nexacerbations")))
+  mutate(Exa_or_stable = factor(Exa_or_stable, levels = c("Stable state", "Viral\nexacerbations", "Non-viral\nexacerbations")),
+         PID = factor(PID))
 
 counts <- data_plot %>%
   group_by(Exa_or_stable) %>%
@@ -1278,17 +1288,36 @@ counts <- data_plot %>%
 
 x_labels <- setNames(paste0(levels(data_plot$Exa_or_stable), "\nN = ", counts$N), levels(data_plot$Exa_or_stable))
 
-stat.test <- data_plot %>% 
-  wilcox_test(observed_richness ~ Exa_or_stable) %>%
-  add_significance() %>%
-  add_xy_position(x = "Exa_or_stable")
+model <- glmmTMB(
+  observed_richness ~ Exa_or_stable + (1 | PID),
+  family = compois(),
+  data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ Exa_or_stable)
+
+pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+
+stat.test <- pw_cmp_df %>%
+  mutate(
+    group1 = sub(" - .*", "", contrast),
+    group2 = sub(".* - ", "", contrast),
+    y.position = max(data_plot$observed_richness, na.rm = TRUE) + c(1.5, 2, 2.5)) %>%
+  add_significance(p.col = "p.value", output.col = "p.adj.signif")
 
 ggplot(data_plot, aes(x = Exa_or_stable, y = observed_richness)) +
   geom_boxplot(aes(color = Exa_or_stable, fill = Exa_or_stable), width = 0.5, alpha = 0.4, outlier.shape = NA) +
   geom_jitter(aes(color = Exa_or_stable), width = 0.2, height = 0, size = 2, alpha = 0.3) +
   scale_fill_manual(values = wes_palette("FrenchDispatch")) +
   scale_color_manual(values = wes_palette("FrenchDispatch")) +
-  labs(x = "", y = "Observed Richness") +
+  labs(x = "", y = "Observed Richness of\nEukaryotic Viral Species") +
   scale_y_continuous(breaks = seq(0, 12, by = 4)) +
   scale_x_discrete(labels = x_labels) +
   theme_minimal() +
@@ -1306,17 +1335,36 @@ datatable(stat.test)
 ```
 
 ```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
-stat.test <- data_plot %>% 
-  wilcox_test(shannon_diversity ~ Exa_or_stable) %>%
-  add_significance() %>%
-  add_xy_position(x = "Exa_or_stable")
+model <- glmmTMB(
+  shannon_diversity ~ Exa_or_stable + (1 | PID),
+  family = tweedie(),
+  data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ Exa_or_stable)
+
+pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+
+stat.test <- pw_cmp_df %>%
+  mutate(
+    group1 = sub(" - .*", "", contrast),
+    group2 = sub(".* - ", "", contrast),
+    y.position = max(data_plot$shannon_diversity, na.rm = TRUE) + c(0, 0.1, 0)) %>%
+  add_significance(p.col = "p.value", output.col = "p.adj.signif")
 
 ggplot(data_plot, aes(x = Exa_or_stable, y = shannon_diversity)) +
   geom_boxplot(aes(color = Exa_or_stable, fill = Exa_or_stable), width = 0.5, alpha = 0.4, outlier.shape = NA) +
   geom_jitter(aes(color = Exa_or_stable), width = 0.2, height = 0, size = 2, alpha = 0.3) +
   scale_fill_manual(values = wes_palette("FrenchDispatch")) +
   scale_color_manual(values = wes_palette("FrenchDispatch")) +
-  labs(x = "", y = "Shannon Diversity Index") +
+  labs(x = "", y = "Shannon Diversity Index\nEukaryotic Viral Species") +
   scale_x_discrete(labels = x_labels) +
   theme_minimal() +
   theme(
@@ -1326,7 +1374,8 @@ ggplot(data_plot, aes(x = Exa_or_stable, y = shannon_diversity)) +
     axis.title.y = element_text(size = 15, vjust = 2, margin = margin(r = 15)),
     axis.text.y = element_text(size = 15),
     legend.position = "none") +
-  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) 
+  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
+
 ```
 ```{r echo=FALSE}
 datatable(stat.test)
@@ -1354,23 +1403,6 @@ tree + geom_tippoint(aes(color = Clade), size = 1.5, alpha = 0.5) +
 ```
 
 ### Figure 2d
-```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
-genus_counts <- Mastertable_viral %>%
-  filter(Final_Family == "Anelloviridae") %>%
-  count(Final_GenusN)
-
-ggplot(genus_counts, aes(x = 2, y = n, fill = reorder(Final_GenusN, n))) +
-  geom_bar(stat = "identity", width = 1) +
-  coord_polar(theta = "y") +
-  labs(fill = "Anelloviridae Genus") +
-  scale_fill_manual(values=MyColorsAnello) +
-  theme_void() +
-  theme(legend.title = element_text(size =12)) +
-  guides(fill=guide_legend(reverse=TRUE)) +
-  xlim(0.8, 2.5)
-```
-
-### Figure 2e
 ```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
 abundances_TPM <- Mastertable_viral %>%
   filter(Final_Family == "Anelloviridae") %>%
@@ -1403,11 +1435,27 @@ counts <- data_plot %>%
 
 x_labels <- setNames(paste0(levels(data_plot$Exa_or_stable), "\nN = ", counts$N), levels(data_plot$Exa_or_stable))
 
-stat.test <- data_plot %>% 
-  wilcox_test(observed_richness ~ Exa_or_stable) %>%
-  add_significance() %>%
-  add_xy_position(x = "Exa_or_stable") %>%
-  mutate(y.position = y.position + 0.5)
+model <- glmmTMB(
+  observed_richness ~ Exa_or_stable + (1 | PID),
+  family = compois(),
+  data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ Exa_or_stable)
+pw_comparisons <- pairs(estimated_marginal_means)
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+
+stat.test <- pw_cmp_df %>%
+  mutate(group1 = sub(" - .*", "", contrast), 
+         group2 = sub(".* - ", "", contrast),
+         y.position = max(data_plot$observed_richness, na.rm = TRUE) + 0.2) %>%
+  add_significance(p.col = "p.value", output.col = "p.signif")
 
 ggplot(data_plot, aes(x = Exa_or_stable, y = observed_richness)) +
   geom_boxplot(aes(color = Exa_or_stable, fill = Exa_or_stable), width = 0.5, alpha = 0.4, outlier.shape = NA) +
@@ -1415,7 +1463,8 @@ ggplot(data_plot, aes(x = Exa_or_stable, y = observed_richness)) +
   scale_fill_manual(values = wes_palette("FrenchDispatch")) +
   scale_color_manual(values = wes_palette("FrenchDispatch")) +
   scale_x_discrete(labels = x_labels) +
-  labs(x = "", y = "Observed Richness") +
+  labs(x = "", y = expression(atop("Observed Richness",
+                                   "of" ~ italic("Anelloviridae") ~ "Genera"))) +
   theme_minimal() +
   theme(
     panel.grid.major.x = element_blank(),
@@ -1431,11 +1480,26 @@ datatable(stat.test)
 ```
 
 ```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
-stat.test <- data_plot %>% 
-  wilcox_test(shannon_diversity ~ Exa_or_stable) %>%
-  add_significance() %>%
-  add_xy_position(x = "Exa_or_stable") %>%
-  mutate(y.position = y.position + 0.1)
+model <- glmmTMB(
+  shannon_diversity ~ Exa_or_stable + (1 | PID),
+  family = tweedie(),
+  data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ Exa_or_stable)
+pw_comparisons <- pairs(estimated_marginal_means)
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+
+stat.test <- pw_cmp_df %>%
+  mutate(group1 = sub(" - .*", "", contrast), group2 = sub(".* - ", "", contrast),
+         y.position = max(data_plot$shannon_diversity, na.rm = TRUE) + 0.1) %>%
+  add_significance(p.col = "p.value", output.col = "p.signif")
 
 ggplot(data_plot, aes(x = Exa_or_stable, y = shannon_diversity)) +
   geom_boxplot(aes(color = Exa_or_stable, fill = Exa_or_stable), width = 0.5, alpha = 0.4, outlier.shape = NA) +
@@ -1443,7 +1507,8 @@ ggplot(data_plot, aes(x = Exa_or_stable, y = shannon_diversity)) +
   scale_fill_manual(values = wes_palette("FrenchDispatch")) +
   scale_color_manual(values = wes_palette("FrenchDispatch")) +
   scale_x_discrete(labels = x_labels) +
-  labs(x = "", y = "Shannon Diversity Index") +
+  labs(x = "", y = expression(atop("Shannon Diversity Index",
+                                   "of" ~ italic("Anelloviridae") ~ "Genera"))) +
   theme_minimal() +
   theme(
     panel.grid.major.x = element_blank(),
@@ -1458,97 +1523,29 @@ ggplot(data_plot, aes(x = Exa_or_stable, y = shannon_diversity)) +
 datatable(stat.test)
 ```
 
-### Figure 2f
+### Figure 2e
 ```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
-abundances_TPM <- Mastertable_viral %>%
+genus_counts <- Mastertable_viral %>%
   filter(Final_Family == "Anelloviridae") %>%
-  select(c("CONTIGS", "length", "Final_GenusN"), all_of(samples)) %>%
-  pivot_longer(cols = samples, names_to = "sample_ID", values_to = "mapped_reads") 
+  count(Final_GenusN)
 
-abundances_TPM$RPK <- abundances_TPM$mapped_reads/abundances_TPM$length
-
-abundances_TPM <- abundances_TPM %>%
-  group_by(sample_ID) %>%
-  mutate(RPK_total = sum(RPK),
-         TPM = (RPK / RPK_total) * 10^6)
-
-abundances_TPM$TPM[is.nan(abundances_TPM$TPM)] <- 0
-
-abundances_TPM <- abundances_TPM %>%
-  group_by(sample_ID, Final_GenusN) %>%
-  summarize(TPM_by_genera = sum(TPM)) %>%
-  summarize(observed_richness = sum(c_across(TPM_by_genera) > 0), shannon_diversity = diversity(c_across(TPM_by_genera), index = "shannon"))
-
-abundances_TPM <- merge(abundances_TPM, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
-
-data_plot <- abundances_TPM %>% 
-  filter(CURRCOPD %in% c("Moderate", "Severe", "Very severe")) %>%
-  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe")))
-
-counts <- data_plot %>%
-  group_by(CURRCOPD) %>%
-  summarise(N = n_distinct(sample_ID))
-
-x_labels <- setNames(paste0(levels(data_plot$CURRCOPD), "\nN = ", counts$N), levels(data_plot$CURRCOPD))
-
-stat.test <- data_plot %>% 
-  wilcox_test(observed_richness ~ CURRCOPD, p.adjust.method = "holm") %>%
-  add_xy_position(x = "CURRCOPD")
-
-ggplot(data_plot, aes(x = CURRCOPD, y = observed_richness)) +
-  geom_boxplot(aes(color = CURRCOPD, fill = CURRCOPD), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = CURRCOPD), width = 0.2, height = 0, size = 1.5, alpha = 0.5) +
-  scale_fill_manual(values = MyColorsSeverity) +
-  scale_color_manual(values = MyColorsSeverity) +
-  scale_x_discrete(labels = x_labels) +
-  scale_y_continuous(breaks = seq(0, 10, by = 2)) +
-  labs(x = "", y = "Observed Richness") +
-  theme_minimal() +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.major.y = element_line(size = 1.2),
-    axis.text.x = element_text(size = 12),
-    axis.title.y = element_text(size = 15, vjust = 2, margin = margin(r = 15)),
-    axis.text.y = element_text(size = 15),
-    legend.position = "none") +
-  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
-```
-```{r echo=FALSE}
-datatable(stat.test)
-```
-
-```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
-stat.test <- data_plot %>% 
-  wilcox_test(shannon_diversity ~ CURRCOPD, p.adjust.method = "holm") %>%
-  add_xy_position(x = "CURRCOPD")
-
-ggplot(data_plot, aes(x = CURRCOPD, y = shannon_diversity)) +
-  geom_boxplot(aes(color = CURRCOPD, fill = CURRCOPD),  width = 0.5, alpha = 0.4) +
-  geom_jitter(aes(color = CURRCOPD), width = 0.2, height = 0, size = 1.5, alpha = 0.5) +
-  scale_fill_manual(values = MyColorsSeverity) +
-  scale_color_manual(values = MyColorsSeverity) +
-  scale_x_discrete(labels = x_labels) +
-  labs(x = "", y = "Shannon Diversity Index") +
-  theme_minimal() +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.major.y = element_line(size = 1.2),
-    axis.text.x = element_text(size = 12),
-    axis.title.y = element_text(size = 15, vjust = 2, margin = margin(r = 15)),
-    axis.text.y = element_text(size = 15),
-    legend.position = "none") +
-  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
-```
-```{r echo=FALSE}
-datatable(stat.test)
+ggplot(genus_counts, aes(x = 2, y = n, fill = reorder(Final_GenusN, n))) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(fill = "Anelloviridae Genus") +
+  scale_fill_manual(values=MyColorsAnello) +
+  theme_void() +
+  theme(legend.title = element_text(size =12)) +
+  guides(fill=guide_legend(reverse=TRUE)) +
+  xlim(0.8, 2.5)
 ```
 
 ## Figure 3
 
 ### Figure 3a
-```{r, fig.width = 15, fig.height = 6, fig.align = 'center'}
+```{r, fig.width = 14, fig.height = 10, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
@@ -1561,7 +1558,7 @@ abundances_TPM_pos_only <- Mastertable_viral %>%
 abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
 
 data_plot <- abundances_TPM_pos_only %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   group_by(sample_ID, Final_FamilyN) %>%
   summarize(RPK = sum(RPK), .groups = 'drop')
 
@@ -1580,30 +1577,42 @@ data_summary <- data_plot %>%
   group_by(CURRCOPD, Final_FamilyN) %>%
   summarize(mean = mean(mean_TPM_patient),
             N_samples = sum(n_per_PID),
-            N_patients = n(), .groups = "drop")
+            N_patients = n(), .groups = "drop") %>%
+  mutate(AAI_number = ifelse(mean > 0, str_extract(Final_FamilyN, "(?<=FamilyAAI_)\\d+"), ""))
 
 sample_size <- data_summary %>% 
   group_by(CURRCOPD) %>% 
   summarise(N_samples = unique(N_samples), 
             N_patients = unique(N_patients), .groups = "drop") %>%
-  mutate(N = paste0(CURRCOPD, "\nN=", N_samples, " (", N_patients, " patients)"))
+  mutate(N = paste0(CURRCOPD, "\nN=", N_samples, "\n(", N_patients, " patients)"))
 
-data_summary$CURRCOPD <- factor(data_summary$CURRCOPD, levels = c("Moderate", "Severe", "Very severe"))
+data_summary <- data_summary %>%
+  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe")),
+         Final_FamilyN = factor(Final_FamilyN, levels = c(sort(names(ino_colors)), sort(names(micro_colors)), 
+                                                          "Rountreeviridae:FamilyAAI_55_Rountreeviridae", "Schitoviridae:FamilyAAI_30_Schitoviridae",
+                                                          "Unclassified Caudoviricetes:FamilyAAI_31_Peduoviridae" ,
+                                                          "Unclassified Caudoviricetes:FamilyAAI_51_Orlajensenviridae" ,
+                                                          "Unclassified Caudoviricetes:FamilyAAI_54_Salasmaviridae" ,
+                                                          "Unclassified Caudoviricetes:FamilyAAI_8_Aliceevansviridae", sort(names(unclassified_caudo_colors)), 
+                                                          "Unclassified Crassvirales:FamilyAAI_134_Suoliviridae")))
 
 ggplot(data = data_summary, aes(x = CURRCOPD, y = mean, fill = Final_FamilyN)) +
   geom_bar(stat = "identity") + 
+  geom_text(aes(label = AAI_number), position = position_stack(vjust = 0.5), size = 2, color = "black")+
   scale_y_continuous(expand=c(0,0)) +
-  labs(x = "", y = "Transcripts Per Kilobase Million (TPM)", fill = "Phage Family")  +
-  scale_fill_manual(values=MyColorsPhageFamiliesN) +
+  labs(x = "", y = "Relative Abundance of Phage Family-Clusters\nin Transcripts Per Kilobase Million (TPM)", fill = "Phage Family")  +
+  scale_fill_manual(values=MyColorsPhageFamiliesN, guide = guide_legend(ncol = 3)) +
   scale_x_discrete(labels = setNames(sample_size$N, sample_size$CURRCOPD)) + 
   theme_minimal() +
-  theme(text = element_text(size = 12))
+  theme(text = element_text(size = 12),
+        legend.position = "bottom",
+        legend.key.spacing.y = unit(0, "cm"))
 ```
 
 ### Figure 3b
 ```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
 abundances_TPM <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(c("CONTIGS", "length"), all_of(samples), all_of(grep("^Final", colnames(Mastertable_viral)))) %>%
   pivot_longer(cols = samples, names_to = "sample_ID", values_to = "mapped_reads") 
 
@@ -1632,9 +1641,29 @@ counts <- data_plot %>%
 
 x_labels <- setNames(paste0(levels(data_plot$CURRCOPD), "\nN = ", counts$N), levels(data_plot$CURRCOPD))
 
-stat.test <- data_plot %>% 
-  wilcox_test(observed_richness ~ CURRCOPD, p.adjust.method = "holm") %>%
-  add_xy_position(x = "CURRCOPD")
+model <- glmmTMB(
+  observed_richness ~ CURRCOPD + (1 | PID),
+  data = data_plot,
+  family = compois)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+
+pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+
+stat.test <- pw_cmp_df %>%
+  mutate(
+    group1 = sub(" - .*", "", contrast),
+    group2 = sub(".* - ", "", contrast),
+    y.position = max(data_plot$observed_richness, na.rm = TRUE) + c(1.5, 2, 2.5)) %>%
+  add_significance(p.col = "p.value", output.col = "p.adj.signif")
 
 ggplot(data_plot, aes(x = CURRCOPD, y = observed_richness)) +
   geom_boxplot(aes(color = CURRCOPD, fill = CURRCOPD), width = 0.5, alpha = 0.4, outlier.shape = NA) +
@@ -1643,7 +1672,7 @@ ggplot(data_plot, aes(x = CURRCOPD, y = observed_richness)) +
   scale_color_manual(values = MyColorsSeverity) +
   scale_x_discrete(labels = x_labels) +
   scale_y_continuous(breaks = seq(0, 10, by = 2)) +
-  labs(x = "", y = "Observed Richness") +
+  labs(x = "", y = "Observed Richness\nof Phage OTUs") +
   theme_minimal() +
   theme(
     panel.grid.major.x = element_blank(),
@@ -1654,23 +1683,42 @@ ggplot(data_plot, aes(x = CURRCOPD, y = observed_richness)) +
     legend.position = "none") +
   stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
 ```
-
 ```{r echo=FALSE}
 datatable(stat.test)
 ```
 
 ```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
-stat.test <- data_plot %>% 
-  wilcox_test(shannon_diversity ~ CURRCOPD, p.adjust.method = "holm") %>%
-  add_xy_position(x = "CURRCOPD")
+model <- glmmTMB(
+  shannon_diversity ~ CURRCOPD + (1 | PID),
+  family = tweedie(),
+  data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+
+pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+
+stat.test <- pw_cmp_df %>%
+  mutate(
+    group1 = sub(" - .*", "", contrast),
+    group2 = sub(".* - ", "", contrast),
+    y.position = max(data_plot$shannon_diversity, na.rm = TRUE) + c(0.2, 0.4, 0.6)) %>%
+  add_significance(p.col = "p.value", output.col = "p.adj.signif")
 
 ggplot(data_plot, aes(x = CURRCOPD, y = shannon_diversity)) +
-  geom_boxplot(aes(color = CURRCOPD, fill = CURRCOPD),  width = 0.5, alpha = 0.4) +
+  geom_boxplot(aes(color = CURRCOPD, fill = CURRCOPD),  width = 0.5, alpha = 0.4, outlier.shape = NA) +
   geom_jitter(aes(color = CURRCOPD), width = 0.2, height = 0, size = 1.5, alpha = 0.5) +
   scale_fill_manual(values = MyColorsSeverity) +
   scale_color_manual(values = MyColorsSeverity) +
   scale_x_discrete(labels = x_labels) +
-  labs(x = "", y = "Shannon Diversity Index") +
+  labs(x = "", y = "Shannon Diversity Index\nof Phage OTUs") +
   theme_minimal() +
   theme(
     panel.grid.major.x = element_blank(),
@@ -1680,6 +1728,100 @@ ggplot(data_plot, aes(x = CURRCOPD, y = shannon_diversity)) +
     axis.text.y = element_text(size = 15),
     legend.position = "none") +
   stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+
+### Figure 3c
+```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
+abundances_TPM <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  select(c("CONTIGS", "length"), all_of(samples), all_of(grep("^Final", colnames(Mastertable_viral)))) %>%
+  pivot_longer(cols = samples, names_to = "sample_ID", values_to = "mapped_reads") 
+
+abundances_TPM$RPK <- abundances_TPM$mapped_reads/abundances_TPM$length
+
+abundances_TPM <- abundances_TPM %>%
+  group_by(sample_ID) %>%
+  mutate(RPK_total = sum(RPK),
+         TPM = (RPK / RPK_total) * 10^6)
+
+abundances_TPM$TPM[is.nan(abundances_TPM$TPM)] <- 0
+
+abundances_TPM <- abundances_TPM %>%
+  group_by(sample_ID) %>%
+  summarize(observed_richness = sum(c_across(TPM) > 0), shannon_diversity = diversity(c_across(TPM), index = "shannon"))
+
+data_plot <- merge(abundances_TPM, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
+
+data_plot <- data_plot %>%
+  filter(!is.na(FEVPC))
+
+model <- glmmTMB(observed_richness ~ FEVPC + (1|PID), family = nbinom2, data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+summary_model <- summary(model)
+
+beta <- summary_model$coefficients$cond["FEVPC", "Estimate"]
+se   <- summary_model$coefficients$cond["FEVPC", "Std. Error"]
+p    <- summary_model$coefficients$cond["FEVPC", "Pr(>|z|)"]
+ci <- confint(model, method = "Wald")["FEVPC", ]
+IRR <- exp(beta)
+CI_IRR <- exp(ci)
+
+ggplot(data_plot, aes(x = FEVPC, y = observed_richness, color = CURRCOPD)) +
+  geom_point(size = 2, alpha = 0.5) +
+  scale_color_manual(values = MyColorsSeverity) +
+  geom_smooth(method = "lm", se = TRUE, color = "#5A5156", linetype = "dashed", na.rm = TRUE) +
+  labs(x = "FEV1 (% predicted)", y = "Observed Richness\nof Phage OTUs") +
+  scale_y_continuous(breaks = seq(0, 10, by = 2)) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(size = 1.2)) +
+  annotate("text", x = max(data_plot$FEVPC, na.rm = TRUE), y = max(data_plot$observed_richness,na.rm = TRUE), 
+           label = paste0("Negative binomial mixed-effects model:\nIRR = ", round(IRR, 2), 
+                          " (95% CI = ", round(CI_IRR[1], 2), "-", round(CI_IRR[2], 2), "), p = ", round(p, 3)), 
+           hjust = 1.1, vjust = 5) 
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+
+```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
+model <- glmmTMB(shannon_diversity ~ FEVPC + (1|PID), family = tweedie(), data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+summary_model <- summary(model)
+
+beta <- summary_model$coefficients$cond["FEVPC", "Estimate"]
+se   <- summary_model$coefficients$cond["FEVPC", "Std. Error"]
+p    <- summary_model$coefficients$cond["FEVPC", "Pr(>|z|)"]
+ci <- confint(model, method = "Wald")["FEVPC", ]
+IRR <- exp(beta)
+CI_IRR <- exp(ci)
+
+ggplot(data_plot, aes(x = FEVPC, y = shannon_diversity, color = CURRCOPD)) +
+  geom_point(size = 2, alpha = 0.5) +
+  scale_color_manual(values = MyColorsSeverity) +
+  geom_smooth(method = "lm", se = TRUE, color = "#5A5156", linetype = "dashed", na.rm = TRUE) +
+  labs(x = "FEV1 (% predicted)", y = "Shannon Diversity Index\nof Phage OTUs") +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(0, 2, by = 0.5)) +
+  theme(legend.position = "none",
+        panel.grid.major.y = element_line(size = 1.2)) +
+  annotate("text", x = max(data_plot$FEVPC, na.rm = TRUE), y = max(data_plot$shannon_diversity, na.rm = TRUE), 
+           label = paste0("Tweedie GLMM:\nIRR = ", round(IRR, 2), 
+                          " (95% CI = ", round(CI_IRR[1], 2), "-", round(CI_IRR[2], 2), "), p = ", round(p, 3)), 
+           hjust = 1.1, vjust = 5) 
 ```
 ```{r echo=FALSE}
 datatable(stat.test)
@@ -1690,14 +1832,18 @@ datatable(stat.test)
 ### Figure 4a
 ```{r, fig.width = 12, fig.height = 6, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
   colnames()
 
 abundances_TPM_pos_only <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
   select(c("CONTIGS", "length"), all_of(samples_with_reads), all_of(grep("^Host", colnames(Mastertable_viral)))) %>%
   pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
 
@@ -1781,16 +1927,20 @@ plot_grid(
 ```
 
 ### Figure 4b
-```{r, fig.width = 8, fig.height = 3, fig.align = 'center'}
+```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
   colnames()
 
 abundances_TPM_pos_only <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
   select(c("CONTIGS", "length"), all_of(samples_with_reads), all_of(grep("^Host", colnames(Mastertable_viral)))) %>%
   pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
 
@@ -1809,7 +1959,7 @@ data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Int
 
 data_plot <- data_plot %>%
   filter(CURRCOPD %in% c("Moderate", "Severe", "Very severe")) %>%
-  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"))) %>%
+  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"), ordered = TRUE)) %>%
   mutate(Host_Genus = ifelse(is.na(Host_Genus), "No iPHoP hit", Host_Genus)) %>%
   group_by(Host_Genus) %>%
   filter(sum(TPM) > 0)
@@ -1820,48 +1970,148 @@ counts <- data_plot %>%
 
 x_labels <- setNames(paste0(levels(data_plot$CURRCOPD), "\nN = ", counts$N), levels(data_plot$CURRCOPD))
 
-excl_stat <- data_plot %>%
-  group_by(Host_Genus, CURRCOPD) %>%
-  summarize(var = n_distinct(TPM), .groups = "drop") %>%
+excl_host <- data_plot %>%
   group_by(Host_Genus) %>%
-  summarise(n_var = sum(var == 1), .groups = "drop") %>%
-  filter(n_var >= 2) %>%
+  summarise(
+    n_samples = n(),
+    n_detected = sum(TPM > 0),
+    prevalence = n_detected / n_samples) %>%
+  filter(prevalence < 0.05) %>%
   pull(Host_Genus)
 
-stat.test <- data_plot %>% 
-  filter(!Host_Genus %in% excl_stat) %>%
-  group_by(Host_Genus) %>%
-  wilcox_test(TPM ~ CURRCOPD, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position() %>%
-  mutate(y.position = y.position - 180000)
+stat_df <- data_plot %>%
+  filter(!Host_Genus %in% excl_host)
 
-Host_Genus_Signifdiff <- stat.test$Host_Genus[!stat.test$p.adj.signif == "ns"]
+host_genera <- unique(stat_df$Host_Genus)
 
-data_plot <- data_plot %>% 
-  filter(Host_Genus %in% Host_Genus_Signifdiff)
+stat_results <- lapply(host_genera, function(hostg) {
+  
+  df <- stat_df %>%
+    filter(Host_Genus == hostg)
+  
+  model <- glmmTMB(
+    TPM ~ CURRCOPD + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  
+  pw_cmp_df %>%
+    mutate(
+      Host_Genus = hostg,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + c(0.2, 0.4, 0.6),
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+  })
+  
+stat.test <- bind_rows(stat_results)
+
+data_plot <- data_plot %>%
+  filter(Host_Genus == "Haemophilus")
+
+stat.test <- stat.test %>%
+  filter(Host_Genus == "Haemophilus")
 
 ggplot(data_plot, (aes(x=CURRCOPD, y = TPM))) +
   geom_boxplot(aes(color = Host_Genus, fill = Host_Genus), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = Host_Genus), width = 0.2, height = 0, size = 2, alpha = 0.3) +
+  geom_jitter(aes(color = Host_Genus), width = 0.2, height = 0, size = 3, alpha = 0.3) +
   scale_fill_manual(values = MyColorsHostGenus) +
   scale_color_manual(values = MyColorsHostGenus) +
-  labs(x = "", y = "TPM") +
+  labs(x = "", y = expression(atop(italic("Haemophilus") ~ "-infecting phages (TPM)"))) +
   theme_minimal() +
   theme(text = element_text(size = 12),
         panel.grid.major.x = element_blank(),
-        panel.grid.minor.y = element_blank(),
         legend.position = "none",
-        strip.text = element_text(size = 8, margin = margin(b = 60, t = 10))) +
+        strip.text = element_blank()) +
   scale_x_discrete(labels = x_labels) +
   scale_y_continuous(labels = comma) +
-  facet_wrap(~Host_Genus, scales = "free_x", strip.position = "top", ncol = 3) +
+  facet_wrap(~Host_Genus, scales = "free_x", ncol = 4) +
   stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
   coord_cartesian(ylim = c(0, 1000000), clip = "off")
-
 ```
 
 ### Figure 4c
 ```{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
+samples_with_reads <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
+  select(all_of(samples)) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  select_if(~ . > 0) %>%
+  colnames()
+
+abundances_TPM_pos_only <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
+  select(c("CONTIGS", "length"), all_of(samples_with_reads), all_of(grep("^Host", colnames(Mastertable_viral)))) %>%
+  pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
+
+abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
+
+data_plot <- abundances_TPM_pos_only %>%
+  group_by(sample_ID, Host_Genus) %>%
+  summarize(RPK = sum(RPK), .groups = 'drop')
+
+data_plot <- data_plot %>%
+  group_by(sample_ID) %>%
+  mutate(RPK_total = sum(RPK),
+         TPM = (RPK / RPK_total) * 10^6)
+
+data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
+
+data_plot <- data_plot %>%
+  filter(Host_Genus == "Haemophilus")
+
+model <- glmmTMB(TPM ~ FEVPC + (1|PID), family = tweedie(link = "log"), data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+summary_model <- summary(model)
+
+beta <- summary_model$coefficients$cond["FEVPC", "Estimate"]
+se   <- summary_model$coefficients$cond["FEVPC", "Std. Error"]
+p    <- ifelse(summary_model$coefficients$cond["FEVPC", "Pr(>|z|)"] < 0.001, "< 0.001", 
+               paste0("= ", round(summary_model$coefficients$cond["FEVPC", "Pr(>|z|)"], 3)))
+
+ci <- confint(model, method = "Wald")["FEVPC", ]
+IRR <- exp(beta)
+CI_IRR <- exp(ci)
+
+ggplot(data_plot, aes(x = FEVPC, y = TPM)) +
+  geom_point(size = 3, alpha = 0.3,  color = "#E7298A" , fill = "#E7298A") +
+  geom_smooth(method = "lm", se = TRUE, color = "#5A5156", linetype = "dashed", na.rm = TRUE) +
+  labs(x = "FEV1 (% predicted)", y = expression(atop(italic("Haemophilus") ~ "-infecting phages (TPM)"))) +
+  theme_minimal() +
+  scale_y_continuous(labels = comma, breaks = seq(0, 1000000, by = 250000)) +
+  coord_cartesian(ylim = c(-250000, 1000000)) +
+  theme(legend.position = "none") +
+  annotate("text", x = max(data_plot$FEVPC, na.rm = TRUE), y = max(data_plot$TPM,na.rm = TRUE), 
+           label = paste0("Tweedie GLMM: IRR = ", round(IRR, 2), 
+                          " (95% CI = ", round(CI_IRR[1], 2), "-", round(CI_IRR[2], 2), "), p ", p), 
+           hjust = 1.1, vjust = 5) 
+```
+
+### Figure 4d 
+```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
 abundance_bact <- Mastertable_bact %>%
   pivot_longer(cols = starts_with("SRR"), names_to = "sample_ID", values_to = "mapped_reads")
 
@@ -1880,9 +2130,11 @@ abundance_bact <- merge(abundance_bact, metadata,
                         by = c("Date_Visits", "PID"), all = FALSE)
 
 abundances_TPM_pos_only <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
   select(c("CONTIGS", "length"), all_of(samples), all_of(grep("^Host", colnames(Mastertable_viral)))) %>%
-  pivot_longer(cols = samples, names_to = "sample_ID", values_to = "mapped_reads") 
+  pivot_longer(cols = samples, names_to = "sample_ID", values_to = "mapped_reads")
 
 abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
 
@@ -1896,6 +2148,7 @@ abundances_TPM_pos_only <- abundances_TPM_pos_only %>%
          rel_abund_by_host_genus = ifelse(RPK_total == 0, 0, (RPK / RPK_total) * 10^2))
 
 #For Haemophilus
+
 data_plot <- abundances_TPM_pos_only %>%
   filter(grepl("Haemophilus", Host_Genus)) %>%
   group_by(sample_ID) %>%
@@ -1904,77 +2157,39 @@ data_plot <- abundances_TPM_pos_only %>%
 data_plot <- merge(data_plot, abundance_bact, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
 
 data_plot <- data_plot %>%
-  filter(Genus == "Haemophilus") %>%
-  filter(rel_abund_by_genus > 0)
+  filter(Genus == "Haemophilus")
 
-cor_test <- cor.test(data_plot$rel_abund_by_genus, data_plot$rel_abund_phage, method = "pearson", use = pairwise.complete.obs)
-r <- round(cor_test$estimate, 3)
-p_value <- ifelse(cor_test$p.value < 0.001, "< 0.001", paste0("= ", round(cor_test$p.value, 3)))
+model <- glmmTMB(rel_abund_phage ~ rel_abund_by_genus + (1|PID), family = tweedie(), data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+summary_model <- summary(model)
+
+beta <- summary_model$coefficients$cond["rel_abund_by_genus", "Estimate"]
+se   <- summary_model$coefficients$cond["rel_abund_by_genus", "Std. Error"]
+p    <- ifelse(summary_model$coefficients$cond["rel_abund_by_genus", "Pr(>|z|)"] < 0.001, "< 0.001", 
+       paste0("= ", round(summary_model$coefficients$cond["rel_abund_by_genus", "Pr(>|z|)"], 3)))
+
+ci <- confint(model, method = "Wald")["rel_abund_by_genus", ]
+IRR <- exp(beta)
+CI_IRR <- exp(ci)
 
 ggplot(data_plot, aes(x = rel_abund_by_genus, y = rel_abund_phage)) +
-  geom_point(aes(size = 5), alpha = 0.3,  color = "#E7298A" , fill = "#E7298A") +
+  geom_point(size = 3, alpha = 0.3,  color = "#E7298A" , fill = "#E7298A") +
   geom_smooth(method = "lm", se = TRUE, color = "#5A5156", linetype = "dashed", na.rm = TRUE) +
-  labs(x = "Haemophilus bacteria (%)", y = "Haemophilus-infecting phages (%)") +
+  labs(x = "Haemophilus bacteria (%)", y = expression(atop(italic("Haemophilus") ~ "-infecting phages (%)"))) +
   theme_minimal() +
   theme(legend.position = "none") +
   annotate("text", x = max(data_plot$rel_abund_by_genus), y = max(data_plot$rel_abund_phage), 
-           label = paste0("Pearson's r = ", r, ", p ", p_value),
+           label = paste0("Tweedie GLMM: IRR = ", round(IRR, 2), 
+                          " (95% CI = ", round(CI_IRR[1], 2), "-", round(CI_IRR[2], 2), "), p ", p), 
            hjust = 1.1, vjust = 5) 
-
-#For Prevotella
-data_plot <- abundances_TPM_pos_only %>%
-  filter(grepl("Prevotella", Host_Genus)) %>%
-  group_by(sample_ID) %>%
-  summarize(rel_abund_phage = sum(rel_abund_by_host_genus))
-
-data_plot <- merge(data_plot, abundance_bact, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
-
-data_plot <- data_plot %>%
-  filter(Genus == "Prevotella") %>%
-  filter(rel_abund_by_genus > 0)
-
-cor_test <- cor.test(data_plot$rel_abund_by_genus, data_plot$rel_abund_phage, method = "pearson", use = pairwise.complete.obs)
-r <- round(cor_test$estimate, 3)
-p_value <- ifelse(cor_test$p.value < 0.001, "< 0.001", paste0("= ", round(cor_test$p.value, 3)))
-
-ggplot(data_plot, aes(x = rel_abund_by_genus, y = rel_abund_phage)) +
-  geom_point(aes(size = 5), alpha = 0.3,  color = "#66C2A5" , fill = "#66C2A5") +
-  geom_smooth(method = "lm", se = TRUE, color = "#5A5156", linetype = "dashed", 
-              na.rm = TRUE) +
-  labs(x = "Prevotella bacteria (%)", y = "Prevotella-infecting phages (%)") +
-  theme_minimal() +
-  theme(legend.position = "none") +
-  annotate("text", x = max(data_plot$rel_abund_by_genus), y = max(data_plot$rel_abund_phage), 
-           label = paste0("Pearson's r = ", r, ", p ", p_value),
-           hjust = 1.1, vjust = 3) 
-
-#For Streptococcus
-data_plot <- abundances_TPM_pos_only %>%
-  filter(grepl("Streptococcus", Host_Genus)) %>%
-  group_by(sample_ID) %>%
-  summarize(rel_abund_phage = sum(rel_abund_by_host_genus))
-
-data_plot <- merge(data_plot, abundance_bact, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
-
-data_plot <- data_plot %>%
-  filter(Genus == "Streptococcus") %>%
-  filter(rel_abund_by_genus > 0)
-
-cor_test <- cor.test(data_plot$rel_abund_by_genus, data_plot$rel_abund_phage, method = "pearson", use = pairwise.complete.obs)
-r <- round(cor_test$estimate, 3)
-p_value <- ifelse(cor_test$p.value < 0.001, "< 0.001", paste0("= ", round(cor_test$p.value, 3)))
-
-ggplot(data_plot, aes(x = rel_abund_by_genus, y = rel_abund_phage)) +
-  geom_point(aes(size = 5), alpha = 0.3,  color = "#8DA0CB" , fill = "#8DA0CB") +
-  labs(x = "Streptococcus bacteria (%)", y = "Streptococcus-infecting phages (%)") +
-  theme_minimal() +
-  theme(legend.position = "none") +
-  annotate("text", x = max(data_plot$rel_abund_by_genus), y = max(data_plot$rel_abund_phage), 
-           label = paste0("Pearson's r = ", r, ", p ", p_value),
-           hjust = 1.1, vjust = 15)
 ```
 
-### Figure 4d
+### Figure 4e
 ```{r, fig.width = 13, fig.height = 12, fig.align = 'center'}
 phold_annotation <- read.delim(here("data/PHAGE_ANNOTATION/PHOLD", "AERIS_phold_per_cds_predictions.tsv"), header = TRUE)
 vfdb_cds_predictions <- read.delim(here("data/PHAGE_ANNOTATION/PHOLD", "vfdb_cds_predictions.tsv"), header = TRUE)
@@ -2012,13 +2227,15 @@ funct_annot <- funct_annot %>%
                               as.character(product), NA_character_)
   )
 
+# Haemophilus
+
 funct_annot_COI <- funct_annot %>%
   filter(Host_Genus == "Haemophilus") %>%
+  filter(!grepl("V_length", seq_id)) %>%
   mutate(seq_id = factor(seq_id, levels = c("NODE_A23_length_24188_cov_1.012315_AERISVIR237",
                                             "NODE_A16_length_30981_cov_6.715335_AERISVIR387",
                                             "NODE_A14_length_44717_cov_8.708888_AERISVIR357",
                                             "NODE_A27_length_19579_cov_2.190025_AERISVIR428",
-                                            "NODE_A7V_length_43811V27061_cov_2.352789_AERISVIR428",
                                             "NODE_A18_length_28470_cov_4.720518_AERISVIR089",
                                             "NODE_A2_length_61968_cov_1.784513_AERISVIR305")))
 
@@ -2039,14 +2256,14 @@ gggenomes(genes = funct_annot_COI, seqs = genome_seqs) +
   scale_color_identity(guide = "none") +
   theme(legend.position = "right") +
   labs(fill = "PHROG Categories") 
-
 ```
 
-### Figure 4e
+### Figure 4f
 ```{r, fig.width = 5, fig.height = 4, fig.align = 'center'}
 contigs_of_interest <- funct_annot %>%
   filter(funct == "virulence factor, DefenseFinder protein") %>%
   filter(Host_Genus == "Haemophilus") %>%
+  filter(!grepl("V_length", seq_id)) %>%
   distinct(seq_id) %>%
   pull(seq_id)
 
@@ -2082,7 +2299,7 @@ samples_with_hae <- abundance_bact %>%
   pull(AERISVIR_Internal_ID)
 
 data_plot <- abundance_bact %>%
-  select(rel_abund_by_genus, Genus, AERISVIR_Internal_ID) %>%
+  select(rel_abund_by_genus, Genus, AERISVIR_Internal_ID, PID) %>%
   filter(Genus == "Haemophilus") %>%
   filter(AERISVIR_Internal_ID %in% samples_with_hae) %>%
   mutate(VF_presence = ifelse(AERISVIR_Internal_ID %in% samples_with_hae_vf, 
@@ -2096,11 +2313,26 @@ counts <- data_plot %>%
 
 x_labels <- setNames(paste0(levels(data_plot$VF_presence), "\nN = ", counts$N), levels(data_plot$VF_presence))
 
-stat.test <- data_plot %>% 
-  wilcox_test(rel_abund_by_genus ~ VF_presence) %>%
-  add_significance() %>%
-  add_xy_position(x = "VF_presence") %>%
-  mutate(y.position = y.position + 5)
+model <- glmmTMB(
+  rel_abund_by_genus ~ VF_presence + (1 | PID),
+  family = Gamma(link = "log"),
+  data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ VF_presence)
+pw_comparisons <- pairs(estimated_marginal_means)
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+
+stat.test <- pw_cmp_df %>%
+  mutate(contrast = gsub("^\\((.*)\\) - \\((.*)\\)$", "\\1 - \\2", contrast),
+         group1 = sub(" - .*", "", contrast), 
+         group2 = sub(".* - ", "", contrast),
+         y.position = max(data_plot$rel_abund_by_genus, na.rm = TRUE) + 5) %>%
+  add_significance(p.col = "p.value", output.col = "p.signif")
 
 ggplot(data_plot, aes(x = VF_presence, y = rel_abund_by_genus)) +
   geom_boxplot(aes(color = VF_presence, fill = VF_presence), width = 0.5, alpha = 0.4, outlier.shape = NA) +
@@ -2122,69 +2354,12 @@ ggplot(data_plot, aes(x = VF_presence, y = rel_abund_by_genus)) +
 datatable(stat.test)
 ```
 
-### Figure 4f
-```{r, fig.width = 5, fig.height = 4, fig.align = 'center'}
-contigs_of_interest <- funct_annot %>%
-  filter(funct == "virulence factor, DefenseFinder protein") %>%
-  filter(Host_Genus == "Haemophilus") %>%
-  distinct(seq_id) %>%
-  pull(seq_id)
-
-samples_with_hae_vf <- Mastertable_viral %>%
-  filter(CONTIGS %in% contigs_of_interest) %>%
-  select(samples) %>%
-  pivot_longer(cols = samples, names_to = "sample_ID", values_to = "mapped_reads") %>%
-  filter(mapped_reads > 0) %>%
-  distinct(sample_ID) %>%
-  pull(sample_ID)
-
-data_plot <- metadata %>%
-  select(FEVPC, AERISVIR_Internal_ID) %>%
-  filter(AERISVIR_Internal_ID %in% samples_with_hae) %>%
-  filter(!is.na(FEVPC)) %>%
-  mutate(VF_presence = ifelse(AERISVIR_Internal_ID %in% samples_with_hae_vf, 
-                              "Presence of\nHaemophilus-infecting\nphage(s) carrying VF/DF", 
-                              "Absence of\nHaemophilus-infecting\nphage(s) carrying VF/DF"),
-         VF_presence = factor(VF_presence, levels = c("Absence of\nHaemophilus-infecting\nphage(s) carrying VF/DF", "Presence of\nHaemophilus-infecting\nphage(s) carrying VF/DF")))
-
-counts <- data_plot %>%
-  group_by(VF_presence) %>%
-  summarise(N = n_distinct(AERISVIR_Internal_ID))
-
-x_labels <- setNames(paste0(levels(data_plot$VF_presence), "\nN = ", counts$N), levels(data_plot$VF_presence))
-
-stat.test <- data_plot %>% 
-  wilcox_test(FEVPC ~ VF_presence) %>%
-  add_significance() %>%
-  add_xy_position(x = "VF_presence") %>%
-  mutate(y.position = y.position + 5)
-
-ggplot(data_plot, aes(x = VF_presence, y = FEVPC)) +
-  geom_boxplot(aes(color = VF_presence, fill = VF_presence), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = VF_presence), width = 0.2, height = 0, size = 2, alpha = 0.3) +
-  scale_fill_manual(values = c("#8E8E8E","#B40F20")) +
-  scale_color_manual(values = c("#8E8E8E","#B40F20")) +
-  scale_x_discrete(labels = x_labels) +
-  labs(x = "", y = "FEV1 (% predicted)") +
-  theme_minimal() +
-  theme(
-    text = element_text(size = 12),
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "none") +
-  stat_pvalue_manual(stat.test, label = "p.signif", hide.ns = TRUE, tip.length = 0)
-```
-
-```{r echo=FALSE}
-datatable(stat.test)
-```
-
 ## Figure 5
 
 ### Figure 5a
 ```{r, fig.width = 15, fig.height = 6, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
@@ -2197,7 +2372,7 @@ abundances_TPM_pos_only <- Mastertable_viral %>%
 abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
 
 data_plot <- abundances_TPM_pos_only %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   group_by(sample_ID, Final_FamilyN) %>%
   summarize(RPK = sum(RPK), .groups = 'drop')
 
@@ -2221,12 +2396,20 @@ data_summary <- data_plot %>%
   group_by(Exa_or_stable, Final_FamilyN, ExaSev) %>%
   summarize(mean = mean(mean_TPM_patient),
             N_samples = sum(n_per_PID),
-            N_patients = n(), .groups = "drop")
+            N_patients = n(), .groups = "drop") %>%
+  mutate(AAI_number = ifelse(mean > 0, str_extract(Final_FamilyN, "(?<=FamilyAAI_)\\d+"), ""))
 
 data_summary <- data_summary %>%
   mutate(Exa_or_stable = factor(Exa_or_stable, levels = c("Stable_state", "Exacerbated_state"))) %>%
   mutate(ExaSev = factor(ExaSev, levels = c("No_exa", "MildModerate", "Severe"))) %>%
-  mutate(Exa_or_stable_ExaSev = interaction(Exa_or_stable, ExaSev, sep = "_"))
+  mutate(Exa_or_stable_ExaSev = interaction(Exa_or_stable, ExaSev, sep = "_")) %>%
+  mutate(Final_FamilyN = factor(Final_FamilyN, levels = c(sort(names(ino_colors)), sort(names(micro_colors)), 
+                                                          "Rountreeviridae:FamilyAAI_55_Rountreeviridae", "Schitoviridae:FamilyAAI_30_Schitoviridae",
+                                                          "Unclassified Caudoviricetes:FamilyAAI_31_Peduoviridae" ,
+                                                          "Unclassified Caudoviricetes:FamilyAAI_51_Orlajensenviridae" ,
+                                                          "Unclassified Caudoviricetes:FamilyAAI_54_Salasmaviridae" ,
+                                                          "Unclassified Caudoviricetes:FamilyAAI_8_Aliceevansviridae", sort(names(unclassified_caudo_colors)), 
+                                                          "Unclassified Crassvirales:FamilyAAI_134_Suoliviridae")))
 
 sample_size <- data_summary %>% 
   group_by(Exa_or_stable_ExaSev) %>% 
@@ -2240,9 +2423,10 @@ x_labels <- setNames(sample_size$N, sample_size$Exa_or_stable_ExaSev)
 
 ggplot(data = data_summary, aes(x = Exa_or_stable_ExaSev, y = mean, fill = Final_FamilyN)) +
   geom_bar(stat = "identity") + 
+  geom_text(aes(label = AAI_number), position = position_stack(vjust = 0.5), size = 2, color = "black")+
   scale_y_continuous(expand=c(0,0)) +
-  labs(x = "", y = "Transcripts Per Kilobase Million (TPM)", fill = "Phage Family")  +
-  scale_fill_manual(values=MyColorsPhageFamiliesN) +
+  labs(x = "", y = "Relative Abundance of Phage Family-Clusters\nin Transcripts Per Kilobase Million (TPM)", fill = "Phage Family")  +
+  scale_fill_manual(values=MyColorsPhageFamiliesN, guide = guide_legend(ncol = 1)) +
   scale_x_discrete(labels = x_labels) + 
   theme_minimal() +
   theme(text = element_text(size = 12))
@@ -2251,14 +2435,14 @@ ggplot(data = data_summary, aes(x = Exa_or_stable_ExaSev, y = mean, fill = Final
 ### Figure 5b
 ```{r, fig.width = 12, fig.height = 6, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
   colnames()
 
 abundances_TPM_pos_only <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(c("CONTIGS", "length", "replidec_lifestyle", "Final_Class"), all_of(samples_with_reads)) %>%
   pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
 
@@ -2286,27 +2470,65 @@ data_plot <- data_plot %>%
                          levels = c("No_exa", "MildModerate", "Severe"),
                          labels = c("No Exacerbation", "Mild/Moderate\nExacerbations", "Severe\nExacerbations")),
          replidec_lifestyle = factor(replidec_lifestyle,
-                                     levels = c("Temperate", "Virulent", "Chronic"))) %>%
-  filter(!Final_Class == "Unclassified viruses")
-
+                                     levels = c("Temperate", "Virulent", "Chronic")))
 counts <- data_plot %>%
   group_by(ExaSev) %>%
   summarise(N = n_distinct(sample_ID))
 
 x_labels <- setNames(paste0(levels(data_plot$ExaSev), "\nN = ", counts$N), levels(data_plot$ExaSev))
 
-stat.test <- data_plot %>% 
-  group_by(Final_Class, replidec_lifestyle) %>%
-  wilcox_test(TPM ~ ExaSev, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position() %>%
-  mutate(y.position = y.position - 200000)
+class_lifestyle_combo <- data_plot %>%
+  distinct(Final_Class, replidec_lifestyle)
+
+stat_results <- pmap(class_lifestyle_combo, function(...) {
+  class_val <- list(...)[[1]]
+  lifestyle_val <- list(...)[[2]]
+  print(paste("Processing:", class_val, lifestyle_val))
+  
+  df <- data_plot %>%
+    filter(Final_Class == class_val) %>%
+    filter(replidec_lifestyle == lifestyle_val)
+  print(nrow(df))
+  
+  model <- glmmTMB(
+    TPM ~ ExaSev + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ ExaSev)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+  
+  pw_cmp_df %>%
+    mutate(
+      Final_Class = class_val,
+      replidec_lifestyle = lifestyle_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + c(100000, 200000, 300000),
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
 
 ggplot(data_plot, (aes(x=ExaSev, y = TPM))) +
   geom_boxplot(aes(color = Final_Class, fill = Final_Class), width = 0.5, alpha = 0.4, outlier.shape = NA) +
   geom_jitter(aes(color = Final_Class), width = 0.2, height = 0, size = 2, alpha = 0.3) +
   scale_fill_manual(values = MyColorsPhageClasses) +
   scale_color_manual(values = MyColorsPhageClasses) +
-  labs(x = "", y = "TPM") +
+  labs(x = "", y = "Relative Abundance of Phage Classes (TPM)") +
   theme_minimal() +
   theme(text = element_text(size = 12),
         panel.grid.major.x = element_blank(),
@@ -2383,15 +2605,26 @@ ggplot(data_plot, aes(x=PCoA1, y=PCoA2, color = CURRCOPD, shape = Exa_or_stable)
   theme_minimal() +
   scale_color_manual(values = MyColorsSeverity)
 
-permanova_results <- adonis2(bray_dist ~ CURRCOPD + Exa_or_stable, data = data_plot)
+set.seed(123)
+permanova_results <- adonis2(bray_dist ~ Exa_or_stable + CURRCOPD, data = data_plot, permutations = 999, by = "margin")
 ```
 PERMANOVA statistics on COPD subgroups (disease severity + disease status)
 ```{r}
 print(permanova_results)
 ```
-Adujsted p-values
+PERMDISP2 statistics on disease status
 ```{r}
-p.adjust(permanova_results$`Pr(>F)`[1], method = "holm")
+betadisper_status <- betadisper(bray_dist, data_plot$Exa_or_stable)
+set.seed(123)
+permutest(betadisper_status, permutations = 999)
+```
+
+PERMDISP2 statistics on disease severity
+```{r}
+betadisper_severity <- betadisper(bray_dist, data_plot$CURRCOPD)
+set.seed(123)
+permutest(betadisper_severity, permutations = 999)
+TukeyHSD(betadisper_severity)
 ```
 
 ### Figure 6b
@@ -2465,6 +2698,7 @@ get_cumul <- function(distmat, meta) {
   
   attach(meta)
   
+  set.seed(123)
   step.res<-ordiR2step(mod0, scope=formula(mod1), data=meta ,direction="forward", Pin = 1, R2scope = TRUE, pstep = 100, perm.max = 999, permutations=9999, trace = F) #forward stepwise dbRDA
   res=step.res$anova
   
@@ -2581,6 +2815,7 @@ sample_size <- data_plot %>%
 
 x_labels <- setNames(sample_size$N, sample_size$within_or_between_TP_COMP)
 
+set.seed(123)
 anova <- aov(distance ~ within_or_between_TP_COMP, data = data_plot)
 stat.test <- tukey_hsd(anova) 
 
@@ -2600,7 +2835,7 @@ stat.test <- stat.test %>%
 ggplot(data_plot, aes(x = within_or_between_TP_COMP, y = distance)) +
   geom_boxplot(aes(color = TP_COMP, fill = TP_COMP), alpha = 0.4) +
   labs(x = "",
-       y = "Bray-Curtis distance") +
+       y = "Bray-Curtis distance\nbetween virome profiles") +
   scale_color_manual(values = wes_palette("Moonrise3")) +
   scale_fill_manual(values = wes_palette("Moonrise3")) +
   scale_x_discrete(labels = x_labels) +
@@ -2620,9 +2855,9 @@ datatable(stat.test)
 ```
 
 ## Figure 7
-```{r, fig.width = 9, fig.height = 10, fig.align = 'center'}
+```{r, fig.width = 12, fig.height = 9, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
@@ -2635,7 +2870,7 @@ abundances_TPM <- Mastertable_viral %>%
 abundances_TPM$RPK <- abundances_TPM$mapped_reads/abundances_TPM$length
 
 data_plot <- abundances_TPM %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   group_by(sample_ID, Final_FamilyN) %>%
   summarize(RPK = sum(RPK), .groups = "drop")
 
@@ -2668,9 +2903,10 @@ data_plot <- data_plot %>%
 ggplot(data_plot, aes(x = sample_ID, y = TPM, fill = Final_FamilyN)) +
   geom_bar(stat = "identity") + 
   geom_text(aes(label = AAI_number), position = position_stack(vjust = 0.5), size = 2, color = "black")+
-  labs(x = "", y = "Transcripts Per Kilobase Million (TPM)", fill = "Viral Family")  +
+  labs(x = "", y = "Relative Abundance of Phage Family-Clusters\ninTranscripts Per Kilobase Million (TPM)", fill = "Phage Family")  +
   scale_fill_manual(values= MyColorsPhageFamiliesN, 
                     guide = guide_legend(ncol = 1), drop = TRUE) +
+  scale_y_continuous(labels = comma) + 
   theme_minimal() +
   theme(axis.text.x = element_blank(),
         axis.text.y = element_text(size = 5, margin = margin(r = -2)),
@@ -2683,8 +2919,7 @@ ggplot(data_plot, aes(x = sample_ID, y = TPM, fill = Final_FamilyN)) +
                 label = ifelse(Exa_or_stable == "Exacerbated_state", EXATypeDescPCR_EOSBLD2, "")), 
             size = 1.5, color = "#BD3027") +
   expand_limits(y = -50000) +
-  facet_wrap(~PID, scales = "free", nrow = 5)
-
+  facet_wrap(~PID, scales = "free", ncol = 4)
 ```
 
 ## Figure 8
@@ -2775,7 +3010,7 @@ data_plot <- data_plot %>%
 ggplot(data_plot, aes(x = sample_ID, y = TPM, fill = Final_GenusN)) +
   geom_bar(stat = "identity") + 
   geom_line(aes(y = median_bray * 10^6, group = 1), color = "black", size = 0.4) +
-  labs(x = "", y = "Transcripts Per Kilobase Million (TPM)", fill = "Anelloviridae Genera")  +
+  labs(x = "", y = "Relative Abundance of Anelloviridae Genera\nin Transcripts Per Kilobase Million (TPM)", fill = "Anelloviridae Genera")  +
   scale_fill_manual(values= MyColorsAnello) +
   scale_y_continuous(sec.axis = sec_axis(~ . / 10^6, 
                                          name = "Median Bray-Curtis distance to other samples within patient",
@@ -2835,6 +3070,7 @@ sample_size <- data_plot %>%
 
 x_labels <- setNames(sample_size$N, sample_size$within_or_between_TP_COMP)
 
+set.seed(123)
 anova <- aov(distance ~ within_or_between_TP_COMP, data = data_plot)
 stat.test <- tukey_hsd(anova) 
 
@@ -2854,7 +3090,7 @@ stat.test <- stat.test %>%
 ggplot(data_plot, aes(x = within_or_between_TP_COMP, y = distance)) +
   geom_boxplot(aes(color = TP_COMP, fill = TP_COMP), alpha = 0.4) +
   labs(x = "",
-       y = "Bray-Curtis distance") +
+       y = "Bray-Curtis distance/nbetween anellome profiles") +
   scale_color_manual(values = wes_palette("Moonrise3")) +
   scale_fill_manual(values = wes_palette("Moonrise3")) +
   scale_x_discrete(labels = x_labels) +
@@ -2912,7 +3148,7 @@ ggplot(data_plot, aes(x = YearMonth, y = PID)) +
 ```
 
 ## Figure S2
-````{r, fig.width = 8, fig.height = 11, fig.align = 'center'}
+```{r, fig.width = 8, fig.height = 11, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
@@ -2951,7 +3187,7 @@ facet_names <- c(
 
 ggplot(data_plot, aes(x = TPM, y = sample_ID, fill = Final_Family)) +
   geom_bar(stat = "identity") + 
-  labs(x = "Transcripts Per Kilobase Million (TPM)", y = "", fill = "Viral Family")  +
+  labs(x = "Relative Abundance of Viral Families in Transcripts Per Kilobase Million (TPM)", y = "", fill = "Viral Family")  +
   scale_fill_manual(values=MyColorsViralFamilies, guide = guide_legend(ncol = 1)) +
   theme_minimal() +
   theme(axis.text.x = element_text(size = 5),
@@ -2966,10 +3202,10 @@ ggplot(data_plot, aes(x = TPM, y = sample_ID, fill = Final_Family)) +
   scale_y_discrete(limits = rev) +
   facet_wrap(~ facet_group, scales = "free", 
              labeller = labeller(facet_group = facet_names))
-````
+```
 
 ## Figure S3
-````{r, fig.width = 7, fig.height = 10, fig.align = 'center'}
+```{r, fig.width = 7, fig.height = 10, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
   filter(Final_viral == "Eukaryotic viruses") %>%
   select(all_of(samples)) %>%
@@ -3001,7 +3237,8 @@ data_plot <- data_plot %>%
     Exa_or_stable == "Exacerbated_state" & EXAViral == "1" ~ "Viral\nexacerbations",
     Exa_or_stable == "Exacerbated_state" & EXAViral == "0" ~ "Non-viral\nexacerbations",
     Exa_or_stable == "Exacerbated_state" & is.na(EXAViral) ~ "Non-viral\nexacerbations")) %>%
-  mutate(Exa_or_stable = factor(Exa_or_stable, levels = c("Stable state", "Viral\nexacerbations", "Non-viral\nexacerbations")))
+  mutate(Exa_or_stable = factor(Exa_or_stable, levels = c("Stable state", "Viral\nexacerbations", "Non-viral\nexacerbations"),
+                                labels = c("Stable state", "Viral\nexacerbations", "Non-viral\nexacerbations")))
 
 counts <- data_plot %>%
   group_by(Exa_or_stable) %>%
@@ -3009,30 +3246,68 @@ counts <- data_plot %>%
 
 x_labels <- setNames(paste0(levels(data_plot$Exa_or_stable), "\nN = ", counts$N), levels(data_plot$Exa_or_stable))
 
-excl_stat <- data_plot %>%
-  group_by(Final_Family, Exa_or_stable) %>%
-  summarize(var = n_distinct(TPM), .groups = "drop") %>%
+excl_fam <- data_plot %>%
   group_by(Final_Family) %>%
-  summarise(n_var = sum(var == 1), .groups = "drop") %>%
-  filter(n_var >= 2) %>%
+  summarise(
+    n_samples = n(),
+    n_detected = sum(TPM > 0),
+    prevalence = n_detected / n_samples) %>%
+  filter(prevalence < 0.02) %>%
   pull(Final_Family)
 
-stat.test <- data_plot %>% 
-  filter(!Final_Family %in% excl_stat) %>%
-  group_by(Final_Family) %>%
-  wilcox_test(TPM ~ Exa_or_stable, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position()
+stat_df <- data_plot %>%
+  filter(!Final_Family %in% excl_fam)
+
+viral_fam <- unique(stat_df$Final_Family)
+
+stat_results <- lapply(viral_fam, function(viral_fam_val) {
+  
+  df <- stat_df %>%
+    filter(Final_Family == viral_fam_val)
+  
+  model <- glmmTMB(
+    TPM ~ Exa_or_stable + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ Exa_or_stable)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+  
+  pw_cmp_df %>%
+    mutate(
+      Final_Family = viral_fam_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + c(200000, 250000, 300000),
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
 
 ggplot(data_plot, (aes(x=Exa_or_stable, y = TPM))) +
   geom_boxplot(aes(color = Final_Family, fill = Final_Family), width = 0.5, alpha = 0.4, outlier.shape = NA) +
   geom_jitter(aes(color = Final_Family), width = 0.2, height = 0, size = 2, alpha = 0.3) +
   scale_fill_manual(values = MyColorsViralFamilies) +
   scale_color_manual(values = MyColorsViralFamilies) +
-  labs(x = "", y = "TPM") +
+  labs(x = "", y = "Relative Abundance of Eukaryotic Viral Families (TPM)") +
   theme_minimal() +
   theme(text = element_text(size = 6),
         panel.grid.major.x = element_blank(),
         panel.grid.minor.y = element_blank(),
+        axis.title.y = element_text(size = 10),
         legend.position = "none",
         strip.text = element_text(size = 9, margin = margin(b = 25, t = 10))) +
   scale_x_discrete(labels = x_labels) +
@@ -3040,12 +3315,15 @@ ggplot(data_plot, (aes(x=Exa_or_stable, y = TPM))) +
   facet_wrap(~Final_Family, scales = "free_x", strip.position = "top", nrow = 8) +
   stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
   coord_cartesian(ylim = c(0, 1000000), clip = "off")
-````
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
 
 ## Figure S4
 
 ### Figure S4a
-````{r, fig.width = 6, fig.height = 5, fig.align = 'center'}
+```{r, fig.width = 6, fig.height = 5, fig.align = 'center'}
 respi_patho_families <- c("Adenoviridae", "Coronaviridae", "Orthomyxoviridae", "Paramyxoviridae", "Picornaviridae", "Pneumoviridae", "Parvoviridae")
 
 data_plot <- Mastertable_viral %>%
@@ -3133,10 +3411,10 @@ ggballoonplot(data_summary, x = "Method", y = "Virus", size = "Count",
   theme(text = element_text(size = 12),
         legend.position = "none",
         panel.grid.major.x = element_blank())
-````
+```
 
 ### Figure S4b
-````{r, fig.align = 'center'}
+```{r, fig.width = 5, fig.height = 5, fig.align = 'center'}
 abundances_TPM <- Mastertable_viral %>%
   select(c("CONTIGS", "length"), all_of(samples), all_of(grep("^Final", colnames(Mastertable_viral)))) %>%
   pivot_longer(cols = samples, names_to = "sample_ID", values_to = "mapped_reads") 
@@ -3155,34 +3433,8 @@ abundances_TPM <- abundances_TPM %>%
   summarize(TPM_RHV = sum(TPM)) %>%
   filter(Final_Genus == "Enterovirus")
 
-abundances_TPM <- merge(abundances_TPM, metadata[c("AERISVIR_Internal_ID", "QPCR_RHVRNALD", "PCR_ERRNA")], by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
+abundances_TPM <- merge(abundances_TPM, metadata[c("AERISVIR_Internal_ID", "QPCR_RHVRNALD", "PCR_ERRNA", "PID")], by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
 
-data_plot <- abundances_TPM %>%
-  mutate(QPCR_RHVRNALD = ifelse(PCR_ERRNA == 0 & is.na(QPCR_RHVRNALD), 0, QPCR_RHVRNALD)) %>%
-  filter(!is.na(QPCR_RHVRNALD)) %>%
-  mutate(QPCR_RHVRNALD = QPCR_RHVRNALD + 1)
-
-cor_test <- cor.test(data_plot$TPM_RHV, data_plot$QPCR_RHVRNALD, method = "pearson", use = pairwise.complete.obs)
-r <- round(cor_test$estimate, 3)
-p_value <- ifelse(cor_test$p.value < 0.001, "< 0.001", paste0("= ", round(cor_test$p.value, 3)))
-
-ggplot(data_plot, aes(x = QPCR_RHVRNALD, y = TPM_RHV)) +
-  geom_point(color = "#A2A475", size = 3, alpha = 0.5) +
-  geom_smooth(method = "lm", se = TRUE, color = "#5A5156", linetype = "dashed", na.rm = TRUE) +
-  scale_x_log10() +
-  labs(x = "Log10 (Rhinovirus qPCR load)",
-       y = "Rhinovirus Relative Abundance (TPM)") +
-  theme_minimal() +
-  theme(axis.title.y = element_text(margin = margin(r = 15)),
-        axis.title.x = element_text(margin = margin(t = 15)),
-        legend.position = "none") +
-  annotate("text", x = max(data_plot$QPCR_RHVRNALD), y = max(data_plot$TPM_RHV), 
-           label = paste0("Pearson's r = ", r, ", p ", p_value),
-           hjust = 1.1, vjust = 5)
-````
-
-### Figure S4c
-````{r, fig.width = 5, fig.height = 5, fig.align = 'center'}
 ngs_RHV_positive_samples <- abundances_TPM %>%
   filter(TPM_RHV > 0) %>%
   pull(sample_ID)
@@ -3206,11 +3458,25 @@ counts <- data_plot %>%
 
 x_labels <- setNames(paste0(levels(data_plot$detection), "\nN = ", counts$N), levels(data_plot$detection))
 
-stat.test <- data_plot %>% 
-  wilcox_test(QPCR_RHVRNALD ~ detection, paired = FALSE) %>%
-  add_significance("p") %>%
-  add_y_position() %>%
-  mutate(y.position = log10(y.position + 1e9))
+model <- glmmTMB(
+  QPCR_RHVRNALD ~ detection + (1 | PID),
+  family = Gamma(link = "log"),
+  data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ detection)
+pw_comparisons <- pairs(estimated_marginal_means)
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+
+stat.test <- pw_cmp_df %>%
+  mutate(group1 = sub(" - .*", "", contrast), group2 = sub(".* - ", "", contrast),
+         y.position = log10(max(data_plot$QPCR_RHVRNALD) + 10^9)) %>%
+  add_significance(p.col = "p.value", output.col = "p.signif")
 
 ggplot(data_plot, (aes(x=detection, y = QPCR_RHVRNALD))) +
   geom_boxplot(aes(color = detection, fill = detection), width = 0.5, alpha = 0.4, outlier.shape = NA) +
@@ -3227,10 +3493,91 @@ ggplot(data_plot, (aes(x=detection, y = QPCR_RHVRNALD))) +
   scale_x_discrete(labels = x_labels) +
   scale_y_log10() +
   stat_pvalue_manual(stat.test, label = "p.signif", hide.ns = TRUE, tip.length = 0)
-````
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+
+### Figure S4c
+```{r, fig.width = 5, fig.height = 7, fig.align = 'center'}
+data_plot <- abundances_TPM %>%
+  mutate(QPCR_RHVRNALD = ifelse(PCR_ERRNA == 0 & is.na(QPCR_RHVRNALD), 0, QPCR_RHVRNALD)) %>%
+  filter(!is.na(QPCR_RHVRNALD)) %>%
+  mutate(log10_qPCR = log10(QPCR_RHVRNALD + 1),
+         RHV_detected = as.integer(TPM_RHV > 0)) %>%
+  mutate(RHV_detected = factor(RHV_detected, levels = c(0,1), labels = c("Not detected by NGS", "Detected by NGS")))
+
+model_detection <- glmmTMB(
+  RHV_detected ~ log10_qPCR + (1|PID), 
+  family = binomial(), 
+  data = data_plot)
+
+sim <- simulateResiduals(model_detection)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+summary_model <- summary(model_detection)
+
+beta <- summary_model$coefficients$cond["log10_qPCR", "Estimate"]
+OR <- exp(beta)
+
+ci <- confint(model_detection, method = "Wald")["log10_qPCR", ]
+CI_OR <- exp(ci)
+
+p <- ifelse(summary_model$coefficients$cond["log10_qPCR", "Pr(>|z|)"] < 0.001, "< 0.001", 
+            paste0("= ", round(summary_model$coefficients$cond["log10_qPCR", "Pr(>|z|)"], 3)))
+
+ggplot(data_plot, (aes(x=RHV_detected, y = log10_qPCR))) +
+  geom_jitter(color = "#A2A475", width = 0.05, height = 0, size = 4, alpha = 0.5) +
+  labs(x = "", y = "Log10 (Rhinovirus qPCR load)") +
+  theme_minimal() +
+  theme(text = element_text(size = 12),
+        axis.title.y = element_text(margin = margin(r = 20)),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        legend.position = "none") +
+  annotate("text", x = 1.5, y = Inf, 
+           label = paste0("Binomial GLMM: OR = ", round(OR, 2), 
+                          " (95% CI = ", round(CI_OR[1], 2), "-", round(CI_OR[2], 2), "), p ", p), 
+           hjust = 0.5, vjust = 1.5)
+```
+```{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
+data_plot <- data_plot %>%
+  filter(TPM_RHV > 0 & log10_qPCR > 0)
+
+model_positive <- lmer(
+  TPM_RHV ~ log10_qPCR + (1|PID), 
+  data = data_plot)
+
+sim <- simulateResiduals(model_positive)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+
+beta <- summary_model$coefficients$cond["log10_qPCR", "Estimate"]
+ci <- confint(model_detection, method = "Wald")["log10_qPCR", ]
+p <- ifelse(summary_model$coefficients$cond["log10_qPCR", "Pr(>|z|)"] < 0.001, "< 0.001", 
+            paste0("= ", round(summary_model$coefficients$cond["log10_qPCR", "Pr(>|z|)"], 3)))
+
+ggplot(data_plot, aes(x = QPCR_RHVRNALD, y = TPM_RHV)) +
+  geom_point(color = "#A2A475", size = 3, alpha = 0.5) +
+  geom_smooth(method = "lm", se = TRUE, color = "#5A5156", linetype = "dashed", na.rm = TRUE) +
+  scale_x_log10() +
+  scale_y_continuous(labels = comma, breaks = seq(0, 1000000, by = 250000)) +
+  labs(x = "Log10 (Rhinovirus qPCR load)",
+       y = "Rhinovirus Relative Abundance by NGS (TPM)") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(margin = margin(r = 15)),
+        axis.title.x = element_text(margin = margin(t = 15)),
+        legend.position = "none") +
+  annotate("text", x = max(data_plot$QPCR_RHVRNALD), y = max(data_plot$TPM_RHV), 
+           label = paste0("LMM: beta = ", round(beta, 2), 
+                          " (95% CI = ", round(ci[1], 2), "-", round(ci[2], 2), "), p ", p), 
+           hjust = 1.1, vjust = 5)
+```
 
 ## Figure S5
-````{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
+```{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
 rhino_prevalence <- Mastertable_viral %>%
   filter(Final_Genus == "Enterovirus") %>%
   select("CONTIGS", all_of(samples), "Final_Species", "Final_RHV_strain") %>%
@@ -3259,10 +3606,10 @@ ggplot(data_plot, aes(x = detection_method, y = percentage, fill = Final_RHV_str
     fill = "Rhinovirus strain"
   ) +
   theme_minimal()  
-````
+```
 
 ## Figure S6
-````{r, fig.width = 12, fig.height = 6, fig.align = 'center'}
+```{r, fig.width = 12, fig.height = 6, fig.align = 'center'}
 respi_patho_families <- c("Adenoviridae", "Coronaviridae", "Orthomyxoviridae", "Paramyxoviridae", "Picornaviridae", "Pneumoviridae", "Parvoviridae")
 
 data_plot <- Mastertable_viral %>%
@@ -3306,12 +3653,12 @@ ggplot(data_summary, aes(x = prevalence_respi_patho_perc, y = Final_Species, fil
   annotate("text", x = 0.05, y = 16, label = "Exacerbations",
            vjust = -0.5, hjust = 0.5, size = 5) +
   coord_cartesian(clip = "off")
-````
+```
 
 ## Figure S7
 
 ### Figure S7a
-````{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
+```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
 abundances_TPM <- Mastertable_viral %>%
   filter(Final_viral == "Eukaryotic viruses") %>%
   select(c("CONTIGS", "length"), all_of(samples), all_of(grep("^Final", colnames(Mastertable_viral)))) %>%
@@ -3335,7 +3682,7 @@ abundances_TPM <- merge(abundances_TPM, metadata, by.x = "sample_ID", by.y = "AE
 
 data_plot <- abundances_TPM %>% 
   filter(CURRCOPD %in% c("Moderate", "Severe", "Very severe")) %>%
-  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe")))
+  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"), ordered =  TRUE))
 
 counts <- data_plot %>%
   group_by(CURRCOPD) %>%
@@ -3343,9 +3690,29 @@ counts <- data_plot %>%
 
 x_labels <- setNames(paste0(levels(data_plot$CURRCOPD), "\nN = ", counts$N), levels(data_plot$CURRCOPD))
 
-stat.test <- data_plot %>% 
-  wilcox_test(observed_richness ~ CURRCOPD, p.adjust.method = "holm") %>%
-  add_xy_position(x = "CURRCOPD")
+model <- glmmTMB(
+  observed_richness ~ CURRCOPD + (1 | PID),
+  family = compois,
+  data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+
+pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+
+stat.test <- pw_cmp_df %>%
+  mutate(
+    group1 = sub(" - .*", "", contrast),
+    group2 = sub(".* - ", "", contrast),
+    y.position = max(data_plot$observed_richness, na.rm = TRUE) + c(1.5, 2, 2.5)) %>%
+  add_significance(p.col = "p.value", output.col = "p.adj.signif")
 
 ggplot(data_plot, aes(x = CURRCOPD, y = observed_richness)) +
   geom_boxplot(aes(color = CURRCOPD, fill = CURRCOPD), width = 0.5, alpha = 0.4, outlier.shape = NA) +
@@ -3354,7 +3721,7 @@ ggplot(data_plot, aes(x = CURRCOPD, y = observed_richness)) +
   scale_color_manual(values = MyColorsSeverity) +
   scale_x_discrete(labels = x_labels) +
   scale_y_continuous(breaks = seq(0, 10, by = 2)) +
-  labs(x = "", y = "Observed Richness") +
+  labs(x = "", y = "Observed Richness\nof Eukaryotic Viral Species") +
   theme_minimal() +
   theme(
     panel.grid.major.x = element_blank(),
@@ -3364,21 +3731,42 @@ ggplot(data_plot, aes(x = CURRCOPD, y = observed_richness)) +
     axis.text.y = element_text(size = 15),
     legend.position = "none") +
   stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
-````
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
+model <- glmmTMB(
+  shannon_diversity ~ CURRCOPD + (1 | PID),
+  family = tweedie(),
+  data = data_plot)
 
-### Figure S7b
-````{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
-stat.test <- data_plot %>% 
-  wilcox_test(shannon_diversity ~ CURRCOPD, p.adjust.method = "holm") %>%
-  add_xy_position(x = "CURRCOPD")
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+
+pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+
+stat.test <- pw_cmp_df %>%
+  mutate(
+    group1 = sub(" - .*", "", contrast),
+    group2 = sub(".* - ", "", contrast),
+    y.position = max(data_plot$shannon_diversity, na.rm = TRUE) + c(0.2, 0.4, 0.6)) %>%
+  add_significance(p.col = "p.value", output.col = "p.adj.signif")
 
 ggplot(data_plot, aes(x = CURRCOPD, y = shannon_diversity)) +
-  geom_boxplot(aes(color = CURRCOPD, fill = CURRCOPD),  width = 0.5, alpha = 0.4) +
+  geom_boxplot(aes(color = CURRCOPD, fill = CURRCOPD),  width = 0.5, alpha = 0.4, outlier.shape = NA) +
   geom_jitter(aes(color = CURRCOPD), width = 0.2, height = 0, size = 1.5, alpha = 0.5) +
   scale_fill_manual(values = MyColorsSeverity) +
   scale_color_manual(values = MyColorsSeverity) +
   scale_x_discrete(labels = x_labels) +
-  labs(x = "", y = "Shannon Diversity Index") +
+  labs(x = "", y = "Shannon Diversity Index\nof Eukaryotic Viral Species") +
   theme_minimal() +
   theme(
     panel.grid.major.x = element_blank(),
@@ -3388,13 +3776,143 @@ ggplot(data_plot, aes(x = CURRCOPD, y = shannon_diversity)) +
     axis.text.y = element_text(size = 15),
     legend.position = "none") +
   stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
 
-````
+### Figure S7b
+```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
+abundances_TPM <- Mastertable_viral %>%
+  filter(Final_Family == "Anelloviridae") %>%
+  select(c("CONTIGS", "length", "Final_GenusN"), all_of(samples)) %>%
+  pivot_longer(cols = samples, names_to = "sample_ID", values_to = "mapped_reads") 
+
+abundances_TPM$RPK <- abundances_TPM$mapped_reads/abundances_TPM$length
+
+abundances_TPM <- abundances_TPM %>%
+  group_by(sample_ID) %>%
+  mutate(RPK_total = sum(RPK),
+         TPM = (RPK / RPK_total) * 10^6)
+
+abundances_TPM$TPM[is.nan(abundances_TPM$TPM)] <- 0
+
+abundances_TPM <- abundances_TPM %>%
+  group_by(sample_ID, Final_GenusN) %>%
+  summarize(TPM_by_genera = sum(TPM)) %>%
+  summarize(observed_richness = sum(c_across(TPM_by_genera) > 0), shannon_diversity = diversity(c_across(TPM_by_genera), index = "shannon"))
+
+abundances_TPM <- merge(abundances_TPM, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
+
+data_plot <- abundances_TPM %>% 
+  filter(CURRCOPD %in% c("Moderate", "Severe", "Very severe")) %>%
+  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"), ordered = TRUE)) %>%
+  mutate(PID = factor(PID))
+
+counts <- data_plot %>%
+  group_by(CURRCOPD) %>%
+  summarise(N = n_distinct(sample_ID))
+
+x_labels <- setNames(paste0(levels(data_plot$CURRCOPD), "\nN = ", counts$N), levels(data_plot$CURRCOPD))
+
+model<- glmmTMB(
+  observed_richness ~ CURRCOPD + (1 | PID),
+  family = compois(),
+  data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+
+pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+
+stat.test <- pw_cmp_df %>%
+  mutate(
+    group1 = sub(" - .*", "", contrast),
+    group2 = sub(".* - ", "", contrast),
+    y.position = max(data_plot$observed_richness, na.rm = TRUE) + c(1.5, 2, 2.5)) %>%
+  add_significance(p.col = "p.value", output.col = "p.adj.signif")
+
+ggplot(data_plot, aes(x = CURRCOPD, y = observed_richness)) +
+  geom_boxplot(aes(color = CURRCOPD, fill = CURRCOPD), width = 0.5, alpha = 0.4, outlier.shape = NA) +
+  geom_jitter(aes(color = CURRCOPD), width = 0.2, height = 0, size = 1.5, alpha = 0.5) +
+  scale_fill_manual(values = MyColorsSeverity) +
+  scale_color_manual(values = MyColorsSeverity) +
+  scale_x_discrete(labels = x_labels) +
+  scale_y_continuous(breaks = seq(0, 10, by = 2)) +
+  labs(x = "", y = expression(atop("Observed Richness",
+                                   "of" ~ italic("Anelloviridae") ~ "Genera"))) +
+  theme_minimal() +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(size = 1.2),
+    axis.text.x = element_text(size = 12),
+    axis.title.y = element_text(size = 15, vjust = 2, margin = margin(r = 15)),
+    axis.text.y = element_text(size = 15),
+    legend.position = "none") +
+  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+
+```{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
+model <- glmmTMB(
+  shannon_diversity ~ CURRCOPD + (1 | PID),
+  family = tweedie(),
+  data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+
+pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+
+pw_cmp_df <- as.data.frame(summary(pw_comparisons))
+pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+
+stat.test <- pw_cmp_df %>%
+  mutate(
+    group1 = sub(" - .*", "", contrast),
+    group2 = sub(".* - ", "", contrast),
+    y.position = max(data_plot$shannon_diversity, na.rm = TRUE) + c(0.2, 0.4, 0.6)) %>%
+  add_significance(p.col = "p.value", output.col = "p.adj.signif")
+
+ggplot(data_plot, aes(x = CURRCOPD, y = shannon_diversity)) +
+  geom_boxplot(aes(color = CURRCOPD, fill = CURRCOPD),  width = 0.5, alpha = 0.4, outlier.shape = NA) +
+  geom_jitter(aes(color = CURRCOPD), width = 0.2, height = 0, size = 1.5, alpha = 0.5) +
+  scale_fill_manual(values = MyColorsSeverity) +
+  scale_color_manual(values = MyColorsSeverity) +
+  scale_x_discrete(labels = x_labels) +
+  labs(x = "", y = expression(atop("Shannon Diversity Index",
+                                   "of" ~ italic("Anelloviridae") ~ "Genera"))) +
+  theme_minimal() +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(size = 1.2),
+    axis.text.x = element_text(size = 12),
+    axis.title.y = element_text(size = 15, vjust = 2, margin = margin(r = 15)),
+    axis.text.y = element_text(size = 15),
+    legend.position = "none") +
+  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
 
 ## Figure S8
 
 ### Figure S8a
-````{r, fig.width = 6, fig.height = 5, fig.align = 'center'}
+```{r, fig.width = 6, fig.height = 5, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
   filter(Final_viral == "Eukaryotic viruses" & Final_Family == "Anelloviridae") %>%
   select(all_of(samples)) %>%
@@ -3448,7 +3966,7 @@ x_labels <- setNames(sample_size$N, sample_size$Exa_or_stable)
 ggplot(data = data_summary, aes(x = Exa_or_stable, y = mean, fill = Final_GenusN)) +
   geom_bar(stat = "identity") + 
   scale_y_continuous(expand=c(0,0)) +
-  labs(x = "", y = "Transcripts Per Kilobase Million (TPM)", fill = "Anelloviridae Genera")  +
+  labs(x = "", y = expression(atop("Relative Abundance of" ~ italic("Anelloviridae") ~ "Genera (TPM)")), fill = "Anelloviridae Genera")  +
   scale_fill_manual(values=MyColorsAnello, drop = TRUE) +
   scale_x_discrete(labels = x_labels) +
   theme_minimal() +
@@ -3480,17 +3998,15 @@ data_summary <- data_summary %>%
 ggplot(data = data_summary, aes(x = CURRCOPD, y = mean, fill = Final_GenusN)) +
   geom_bar(stat = "identity") + 
   scale_y_continuous(expand=c(0,0)) +
-  labs(x = "", y = "Transcripts Per Kilobase Million (TPM)", fill = "Anelloviridae Genera")  +
+  labs(x = "", y = expression(atop("Relative Abundance of" ~ italic("Anelloviridae") ~ "Genera (TPM)")), fill = "Anelloviridae Genera")  +
   scale_fill_manual(values=MyColorsAnello) +
   scale_x_discrete(labels = setNames(sample_size$N, sample_size$CURRCOPD)) + 
   theme_minimal() +
   theme(text = element_text(size = 12))
-
-
-````
+```
 
 ### Figure S8b
-````{r,  fig.width = 15, fig.height = 3, fig.align = 'center'}
+```{r,  fig.width = 15, fig.height = 3, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
   filter(Final_viral == "Eukaryotic viruses" & Final_Family == "Anelloviridae") %>%
   select(all_of(samples)) %>%
@@ -3516,38 +4032,72 @@ data_plot <- data_plot %>%
 
 data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
 
-data_summary <- data_plot %>%
+data_plot <- data_plot %>%
   mutate(Exa_or_stable = factor(Exa_or_stable, levels = c("Stable_state", "Exacerbated_state"),
                                 labels = c("Stable state", "Exacerbations")))
 
-counts <- data_summary %>%
+counts <- data_plot %>%
   group_by(Exa_or_stable) %>%
   summarise(N = n_distinct(sample_ID))
 
-x_labels <- setNames(paste0(levels(data_summary$Exa_or_stable), "\nN = ", counts$N), levels(data_summary$Exa_or_stable))
+x_labels <- setNames(paste0(levels(data_plot$Exa_or_stable), "\nN = ", counts$N), levels(data_plot$Exa_or_stable))
 
-excl_stat <- data_summary %>%
-  group_by(Final_GenusN, Exa_or_stable) %>%
-  summarize(var = n_distinct(TPM), .groups = "drop") %>%
+excl_fam <- data_plot %>%
   group_by(Final_GenusN) %>%
-  summarise(n_var = sum(var == 1), .groups = "drop") %>%
-  filter(n_var >= 2) %>%
+  summarise(
+    n_samples = n(),
+    n_detected = sum(TPM > 0),
+    prevalence = n_detected / n_samples) %>%
+  filter(prevalence < 0.01) %>%
   pull(Final_GenusN)
 
-stat.test <- data_summary %>% 
-  filter(!Final_GenusN %in% excl_stat) %>%
-  group_by(Final_GenusN) %>%
-  wilcox_test(TPM ~ Exa_or_stable, p.adjust.method = "holm", paired = FALSE) %>%
-  add_significance("p") %>%
-  add_y_position() %>%
-  mutate(y.position = y.position)
+stat_df <- data_plot %>%
+  filter(!Final_GenusN %in% excl_fam)
 
-ggplot(data_summary, (aes(x=Exa_or_stable, y = TPM))) +
+anello_genera <- unique(stat_df$Final_GenusN)
+
+stat_results <- lapply(anello_genera, function(anello_genus_val) {
+  
+  df <- stat_df %>%
+    filter(Final_GenusN == anello_genus_val)
+  
+  model <- glmmTMB(
+    TPM ~ Exa_or_stable + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ Exa_or_stable)
+  pw_comparisons <- pairs(estimated_marginal_means)
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+
+  pw_cmp_df %>%
+    mutate(
+      Final_GenusN = anello_genus_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + 0.2,
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
+
+ggplot(data_plot, (aes(x=Exa_or_stable, y = TPM))) +
   geom_boxplot(aes(color = Final_GenusN, fill = Final_GenusN), width = 0.5, alpha = 0.4, outlier.shape = NA) +
   geom_jitter(aes(color = Final_GenusN), width = 0.2, height = 0, size = 2, alpha = 0.5) +
   scale_fill_manual(values = MyColorsAnello) +
   scale_color_manual(values = MyColorsAnello) +
-  labs(x = "", y = "TPM") +
+  labs(x = "", y = expression(atop("Relative Abundance of", italic("Anelloviridae") ~ "Genera (TPM)")))  +
   theme_minimal() +
   theme(text = element_text(size = 11),
         panel.grid.major.x = element_blank(),
@@ -3559,59 +4109,13 @@ ggplot(data_summary, (aes(x=Exa_or_stable, y = TPM))) +
   facet_wrap(~Final_GenusN, scales = "free_x", strip.position = "top", nrow = 1) +
   stat_pvalue_manual(stat.test, label = "p.signif", hide.ns = TRUE, tip.length = 0) +
   coord_cartesian(ylim = c(0, 1000000), clip = "off")
-
-data_summary <- data_plot %>%
-  filter(CURRCOPD %in% c("Moderate", "Severe", "Very severe")) %>%
-  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe")))
-
-counts <- data_summary %>%
-  group_by(CURRCOPD) %>%
-  summarise(N = n_distinct(sample_ID))
-
-x_labels <- setNames(paste0(levels(data_summary$CURRCOPD), "\nN = ", counts$N), levels(data_summary$CURRCOPD))
-
-excl_stat <- data_summary %>%
-  group_by(Final_GenusN, CURRCOPD) %>%
-  summarize(var = n_distinct(TPM), .groups = "drop") %>%
-  group_by(Final_GenusN) %>%
-  summarise(n_var = sum(var == 1), .groups = "drop") %>%
-  filter(n_var >= 2) %>%
-  pull(Final_GenusN)
-
-stat.test <- data_summary %>% 
-  filter(!Final_GenusN %in% excl_stat) %>%
-  group_by(Final_GenusN) %>%
-  wilcox_test(TPM ~ CURRCOPD, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position() %>%
-  mutate(y.position = y.position)
-
-ggplot(data_summary, (aes(x=CURRCOPD, y = TPM))) +
-  geom_boxplot(aes(color = Final_GenusN, fill = Final_GenusN), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = Final_GenusN), width = 0.2, height = 0, size = 2, alpha = 0.3) +
-  scale_fill_manual(values = MyColorsAnello) +
-  scale_color_manual(values = MyColorsAnello) +
-  labs(x = "", y = "TPM") +
-  theme_minimal() +
-  theme(text = element_text(size = 11),
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor.y = element_blank(),
-        legend.position = "none",
-        strip.text = element_text(margin = margin(b = 45, t = 10))) +
-  scale_x_discrete(labels = x_labels) +
-  scale_y_continuous(labels = comma) +
-  facet_wrap(~Final_GenusN, scales = "free_x", strip.position = "top", nrow = 1) +
-  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
-  coord_cartesian(ylim = c(0, 1000000), clip = "off")
-
-
-````
-
-## Figure S9
-
-### Figure S9a
-````{r, fig.width = 6, fig.height = 4, fig.align = 'center'}
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+```{r,  fig.width = 15, fig.height = 3, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!(Final_viral == "Eukaryotic viruses")) %>%
+  filter(Final_viral == "Eukaryotic viruses" & Final_Family == "Anelloviridae") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
@@ -3624,7 +4128,118 @@ abundances_TPM_pos_only <- Mastertable_viral %>%
 abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
 
 data_plot <- abundances_TPM_pos_only %>%
-  filter(!(Final_viral == "Eukaryotic viruses")) %>%
+  filter(Final_viral == "Eukaryotic viruses" & Final_Family == "Anelloviridae") %>%
+  group_by(sample_ID, Final_GenusN) %>%
+  summarize(RPK = sum(RPK), .groups = 'drop')
+
+data_plot <- data_plot %>%
+  group_by(sample_ID) %>%
+  mutate(RPK_total = sum(RPK),
+         TPM = (RPK / RPK_total) * 10^6)
+
+data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
+
+data_plot <- data_plot %>%
+  filter(CURRCOPD %in% c("Moderate", "Severe", "Very severe")) %>%
+  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"), ordered = TRUE))
+
+counts <- data_plot %>%
+  group_by(CURRCOPD) %>%
+  summarise(N = n_distinct(sample_ID))
+
+x_labels <- setNames(paste0(levels(data_plot$CURRCOPD), "\nN = ", counts$N), levels(data_plot$CURRCOPD))
+
+excl_fam <- data_plot %>%
+  group_by(Final_GenusN) %>%
+  summarise(
+    n_samples = n(),
+    n_detected = sum(TPM > 0),
+    prevalence = n_detected / n_samples) %>%
+  filter(prevalence < 0.01) %>%
+  pull(Final_GenusN)
+
+stat_df <- data_plot %>%
+  filter(!Final_GenusN %in% excl_fam)
+
+anello_genera <- unique(stat_df$Final_GenusN)
+
+stat_results <- lapply(anello_genera, function(anello_genus_val) {
+  
+  df <- stat_df %>%
+    filter(Final_GenusN == anello_genus_val)
+  
+  model <- glmmTMB(
+    TPM ~ CURRCOPD + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  
+  pw_cmp_df %>%
+    mutate(
+      Final_GenusN = anello_genus_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + 0.2,
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
+
+ggplot(data_plot, (aes(x=CURRCOPD, y = TPM))) +
+  geom_boxplot(aes(color = Final_GenusN, fill = Final_GenusN), width = 0.5, alpha = 0.4, outlier.shape = NA) +
+  geom_jitter(aes(color = Final_GenusN), width = 0.2, height = 0, size = 2, alpha = 0.3) +
+  scale_fill_manual(values = MyColorsAnello) +
+  scale_color_manual(values = MyColorsAnello) +
+  labs(x = "", y = expression(atop("Relative Abundance of", italic("Anelloviridae") ~ "Genera (TPM)")))  +
+  theme_minimal() +
+  theme(text = element_text(size = 11),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        legend.position = "none",
+        strip.text = element_text(margin = margin(b = 45, t = 10))) +
+  scale_x_discrete(labels = x_labels) +
+  scale_y_continuous(labels = comma) +
+  facet_wrap(~Final_GenusN, scales = "free_x", strip.position = "top", nrow = 1) +
+  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
+  coord_cartesian(ylim = c(0, 1000000), clip = "off")
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+
+## Figure S9
+
+### Figure S9a
+```{r, fig.width = 5, fig.height = 4, fig.align = 'center'}
+samples_with_reads <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  select(all_of(samples)) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  select_if(~ . > 0) %>%
+  colnames()
+
+abundances_TPM_pos_only <- Mastertable_viral %>%
+  select(c("CONTIGS", "length"), all_of(samples_with_reads), all_of(grep("^Final", colnames(Mastertable_viral)))) %>%
+  pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
+
+abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
+
+data_plot <- abundances_TPM_pos_only %>%
+  filter(Final_viral == "Good-quality phages") %>%
   group_by(sample_ID, Final_Class) %>%
   summarize(RPK = sum(RPK), .groups = 'drop')
 
@@ -3649,7 +4264,7 @@ data_summary <- data_plot %>%
 
 data_summary <- data_summary %>%
   mutate(Exa_or_stable = factor(Exa_or_stable, levels = c("Stable_state", "Exacerbated_state")),
-         Final_Class = factor(Final_Class, levels = c("Faserviricetes", "Malgrandaviricetes", "Caudoviricetes", "Unclassified viruses")))
+         Final_Class = factor(Final_Class, levels = c("Faserviricetes", "Malgrandaviricetes", "Caudoviricetes")))
 
 sample_size <- data_summary %>% 
   group_by(Exa_or_stable) %>% 
@@ -3663,8 +4278,8 @@ x_labels <- setNames(sample_size$N, sample_size$Exa_or_stable)
 
 ggplot(data = data_summary, aes(x = Exa_or_stable, y = mean, fill = Final_Class)) +
   geom_bar(stat = "identity") + 
-  scale_y_continuous(expand=c(0,0)) +
-  labs(x = "", y = "Transcripts Per Kilobase Million (TPM)", fill = "Phage Class")  +
+  scale_y_continuous(labels = comma, expand=c(0,0)) +
+  labs(x = "", y = "Relative Abundance of Phage Classes (TPM)", fill = "Phage Class")  +
   scale_fill_manual(values=MyColorsPhageClasses, drop = TRUE) +
   scale_x_discrete(labels = x_labels) +
   theme_minimal() +
@@ -3687,23 +4302,23 @@ sample_size <- data_summary %>%
   mutate(N = paste0(CURRCOPD, "\nN=", N_samples, "\n(", N_patients, " patients)"))
 
 data_summary <- data_summary %>%
-  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe")),
-         Final_Class = factor(Final_Class, levels = c("Faserviricetes", "Malgrandaviricetes", "Caudoviricetes", "Unclassified viruses")))
+  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"), ordered = TRUE),
+         Final_Class = factor(Final_Class, levels = c("Faserviricetes", "Malgrandaviricetes", "Caudoviricetes")))
 
 ggplot(data = data_summary, aes(x = CURRCOPD, y = mean, fill = Final_Class)) +
   geom_bar(stat = "identity") + 
-  scale_y_continuous(expand=c(0,0)) +
-  labs(x = "", y = "Transcripts Per Kilobase Million (TPM)", fill = "Phage Class")  +
+  scale_y_continuous(labels = comma, expand=c(0,0)) +
+  labs(x = "", y = "Relative Abundance of Phage Classes (TPM)", fill = "Phage Class")  +
   scale_fill_manual(values=MyColorsPhageClasses) +
   scale_x_discrete(labels = setNames(sample_size$N, sample_size$CURRCOPD)) + 
   theme_minimal() +
   theme(text = element_text(size = 12))
-````
+```
 
 ### Figure S9b
-````{r, fig.width = 8, fig.height = 4, fig.align = 'center'}
+```{r, fig.width = 8, fig.height = 4, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
@@ -3716,7 +4331,7 @@ abundances_TPM_pos_only <- Mastertable_viral %>%
 abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
 
 data_plot <- abundances_TPM_pos_only %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   group_by(sample_ID, Final_Class) %>%
   summarize(RPK = sum(RPK), .groups = 'drop')
 
@@ -3727,29 +4342,65 @@ data_plot <- data_plot %>%
 
 data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
 
-data_summary <- data_plot %>%
+data_plot <- data_plot %>%
   mutate(Exa_or_stable = factor(Exa_or_stable, levels = c("Stable_state", "Exacerbated_state"),
                                 labels = c("Stable state", "Exacerbations")),
-         Final_Class = factor(Final_Class, levels = c("Faserviricetes", "Malgrandaviricetes", "Caudoviricetes", "Unclassified viruses")))
+         Final_Class = factor(Final_Class, levels = c("Faserviricetes", "Malgrandaviricetes", "Caudoviricetes")))
 
-counts <- data_summary %>%
+counts <- data_plot %>%
   group_by(Exa_or_stable) %>%
   summarise(N = n_distinct(sample_ID))
 
-x_labels <- setNames(paste0(levels(data_summary$Exa_or_stable), "\nN = ", counts$N), levels(data_summary$Exa_or_stable))
+x_labels <- setNames(paste0(levels(data_plot$Exa_or_stable), "\nN = ", counts$N), levels(data_plot$Exa_or_stable))
 
-stat.test <- data_summary %>% 
-  group_by(Final_Class) %>%
-  wilcox_test(TPM ~ Exa_or_stable, paired = FALSE) %>%
-  add_significance("p") %>%
-  add_y_position()
+phage_classes <- unique(data_plot$Final_Class)
 
-ggplot(data_summary, (aes(x=Exa_or_stable, y = TPM))) +
+stat_results <- lapply(phage_classes, function(phage_class_val) {
+  
+  df <- data_plot %>%
+    filter(Final_Class == phage_class_val)
+  
+  if (length(unique(df$Exa_or_stable)) < 2) {
+    return(NULL)
+  }
+  
+  model <- glmmTMB(
+    TPM ~ Exa_or_stable + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ Exa_or_stable)
+  pw_comparisons <- pairs(estimated_marginal_means)
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  
+  pw_cmp_df %>%
+    mutate(
+      Final_Class = phage_class_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + 0.2,
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
+
+ggplot(data_plot, (aes(x=Exa_or_stable, y = TPM))) +
   geom_boxplot(aes(color = Final_Class, fill = Final_Class), width = 0.5, alpha = 0.4, outlier.shape = NA) +
   geom_jitter(aes(color = Final_Class), width = 0.2, height = 0, size = 2, alpha = 0.4) +
   scale_fill_manual(values = MyColorsPhageClasses) +
   scale_color_manual(values = MyColorsPhageClasses) +
-  labs(x = "", y = "TPM") +
+  labs(x = "", y = "Relative Abundance of Phage Classes (TPM)") +
   theme_minimal() +
   theme(text = element_text(size = 10),
         panel.grid.major.x = element_blank(),
@@ -3761,274 +4412,14 @@ ggplot(data_summary, (aes(x=Exa_or_stable, y = TPM))) +
   facet_wrap(~Final_Class, scales = "free_x", strip.position = "top", ncol = 5) +
   stat_pvalue_manual(stat.test, label = "p.signif", hide.ns = TRUE, tip.length = 0) +
   coord_cartesian(ylim = c(0, 1000000), clip = "off")
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
 
-data_summary <- data_plot %>%
-  filter(CURRCOPD %in% c("Moderate", "Severe", "Very severe")) %>%
-  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe")),
-         Final_Class = factor(Final_Class, levels = c("Faserviricetes", "Malgrandaviricetes", "Caudoviricetes", "Unclassified viruses")))
-
-counts <- data_summary %>%
-  group_by(CURRCOPD) %>%
-  summarise(N = n_distinct(sample_ID))
-
-x_labels <- setNames(paste0(levels(data_summary$CURRCOPD), "\nN = ", counts$N), levels(data_summary$CURRCOPD))
-
-excl_stat <- data_summary %>%
-  group_by(Final_Class, CURRCOPD) %>%
-  summarize(var = n_distinct(TPM), .groups = "drop") %>%
-  group_by(Final_Class) %>%
-  summarise(n_var = sum(var == 1), .groups = "drop") %>%
-  filter(n_var >= 2) %>%
-  pull(Final_Class)
-
-stat.test <- data_summary %>% 
-  filter(!Final_Class %in% excl_stat) %>%
-  group_by(Final_Class) %>%
-  wilcox_test(TPM ~ CURRCOPD, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position() %>%
-  mutate(y.position = y.position - 100000)
-
-ggplot(data_summary, (aes(x=CURRCOPD, y = TPM))) +
-  geom_boxplot(aes(color = Final_Class, fill = Final_Class), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = Final_Class), width = 0.2, height = 0, size = 2, alpha = 0.4) +
-  scale_fill_manual(values = MyColorsPhageClasses) +
-  scale_color_manual(values = MyColorsPhageClasses) +
-  labs(x = "", y = "TPM") +
-  theme_minimal() +
-  theme(text = element_text(size = 10),
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor.y = element_blank(),
-        legend.position = "none",
-        strip.text = element_text(size = 12, margin = margin(b = 25, t = 10))) +
-  scale_x_discrete(labels = x_labels) +
-  scale_y_continuous(labels = comma) +
-  facet_wrap(~Final_Class, scales = "free_x", strip.position = "top", ncol = 5) +
-  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
-  coord_cartesian(ylim = c(0, 1000000), clip = "off")
-````
-
-## Figure S10
-
-### Figure S10a
-````{r, fig.width = 4, fig.height = 7, fig.align = 'center'}
+```{r, fig.width = 8, fig.height = 4, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
-  select(all_of(samples)) %>%
-  summarise(across(everything(), sum, na.rm = TRUE)) %>%
-  select_if(~ . > 0) %>%
-  colnames()
-
-abundances_TPM_pos_only <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
-  select(c("CONTIGS", "length", "replidec_lifestyle"), all_of(samples_with_reads)) %>%
-  pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
-
-abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
-
-data_plot <- abundances_TPM_pos_only %>%
-  group_by(sample_ID, replidec_lifestyle) %>%
-  summarize(RPK = sum(RPK), .groups = 'drop')
-
-data_plot <- data_plot %>%
-  group_by(sample_ID) %>%
-  mutate(RPK_total = sum(RPK),
-         TPM = (RPK / RPK_total) * 10^6)
-
-data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
-
-data_summary <- data_plot %>%
-  group_by(Exa_or_stable, replidec_lifestyle) %>%
-  mutate(N_samples = n(), .groups = "drop",
-         Exa_or_stable = factor(Exa_or_stable, levels = c("Stable_state", "Exacerbated_state")),
-         replidec_lifestyle = factor(replidec_lifestyle,
-                                     levels = c("Temperate", "Virulent", "Chronic")))
-
-sample_size <- data_summary %>% 
-  group_by(Exa_or_stable) %>% 
-  summarise(N_samples = unique(N_samples), .groups = "drop") %>%
-  mutate(N = ifelse(Exa_or_stable == "Exacerbated_state",
-                    paste0("Exacerbations\nN=", N_samples),
-                    paste0("Stable state\nN=", N_samples)))
-
-stat.test <- data_summary %>% 
-  group_by(replidec_lifestyle) %>%
-  wilcox_test(TPM ~ Exa_or_stable, paired = FALSE) %>%
-  add_y_position()
-
-ggplot(data_summary, (aes(x=Exa_or_stable, y = TPM))) +
-  geom_boxplot(aes(color = replidec_lifestyle, fill = replidec_lifestyle), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = replidec_lifestyle), width = 0.2, height = 0, size = 2, alpha = 0.3) +
-  scale_fill_manual(values = wes_palette("IsleofDogs1")) +
-  scale_color_manual(values = wes_palette("IsleofDogs1")) +
-  labs(x = "", y = "TPM") +
-  theme_minimal() +
-  theme(text = element_text(size = 12),
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor.y = element_blank(),
-        legend.position = "none",
-        strip.text = element_text(size = 12, margin = margin(b = 25, t = 10))) +
-  scale_y_continuous(labels = comma) +
-  scale_x_discrete(labels = setNames(sample_size$N, sample_size$Exa_or_stable)) +
-  facet_wrap(~replidec_lifestyle, scales = "free_x", strip.position = "top", nrow = 6) +
-  stat_pvalue_manual(stat.test, label = "p", hide.ns = TRUE, tip.length = 0) +
-  coord_cartesian(ylim = c(0, 1000000), clip = "off")
-````
-
-### Figure S10b
-````{r, fig.width = 4, fig.height = 7, fig.align = 'center'}
-samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
-  select(all_of(samples)) %>%
-  summarise(across(everything(), sum, na.rm = TRUE)) %>%
-  select_if(~ . > 0) %>%
-  colnames()
-
-abundances_TPM_pos_only <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
-  select(c("CONTIGS", "length", "replidec_lifestyle"), all_of(samples_with_reads)) %>%
-  pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
-
-abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
-
-data_plot <- abundances_TPM_pos_only %>%
-  group_by(sample_ID, replidec_lifestyle) %>%
-  summarize(RPK = sum(RPK), .groups = 'drop')
-
-data_plot <- data_plot %>%
-  group_by(sample_ID) %>%
-  mutate(RPK_total = sum(RPK),
-         TPM = (RPK / RPK_total) * 10^6)
-
-data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
-
-data_summary <- data_plot %>%
-  group_by(CURRCOPD, replidec_lifestyle) %>%
-  mutate(N_samples = n(), .groups = "drop",
-         CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe")),
-         replidec_lifestyle = factor(replidec_lifestyle,
-                                     levels = c("Temperate", "Virulent", "Chronic")))
-
-sample_size <- data_summary %>% 
-  group_by(CURRCOPD) %>% 
-  summarise(N_samples = unique(N_samples), .groups = "drop") %>%
-  mutate(N = ifelse(CURRCOPD == "Moderate", paste0("Moderate\nN=", N_samples),
-                    ifelse(CURRCOPD == "Severe", paste0("Severe\nN=", N_samples), 
-                           paste0("Very Severe\nN=", N_samples))))
-
-
-stat.test <- data_summary %>% 
-  group_by(replidec_lifestyle) %>%
-  wilcox_test(TPM ~ CURRCOPD, paired = FALSE) %>%
-  add_y_position()
-
-ggplot(data_summary, (aes(x=CURRCOPD, y = TPM))) +
-  geom_boxplot(aes(color = replidec_lifestyle, fill = replidec_lifestyle), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = replidec_lifestyle), width = 0.2, height = 0, size = 2, alpha = 0.3) +
-  scale_fill_manual(values = wes_palette("IsleofDogs1")) +
-  scale_color_manual(values = wes_palette("IsleofDogs1")) +
-  labs(x = "", y = "TPM") +
-  theme_minimal() +
-  theme(text = element_text(size = 12),
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor.y = element_blank(),
-        legend.position = "none",
-        strip.text = element_text(size = 12, margin = margin(b = 25, t = 10))) +
-  scale_y_continuous(labels = comma) +
-  scale_x_discrete(labels = setNames(sample_size$N, sample_size$CURRCOPD)) +
-  facet_wrap(~replidec_lifestyle, scales = "free_x", strip.position = "top", nrow = 6) +
-  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
-  coord_cartesian(ylim = c(0, 1000000), clip = "off")
-
-````
-
-### Figure S10c
-````{r, fig.width = 12, fig.height = 6, fig.align = 'center'}
-samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
-  select(all_of(samples)) %>%
-  summarise(across(everything(), sum, na.rm = TRUE)) %>%
-  select_if(~ . > 0) %>%
-  colnames()
-
-abundances_TPM_pos_only <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
-  select(c("CONTIGS", "length", "replidec_lifestyle", "Host_Genus"), all_of(samples_with_reads)) %>%
-  pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
-
-abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
-
-data_plot <- abundances_TPM_pos_only %>%
-  group_by(sample_ID, Host_Genus, replidec_lifestyle) %>%
-  summarize(RPK = sum(RPK), .groups = 'drop')
-
-data_plot <- data_plot %>%
-  group_by(sample_ID) %>%
-  mutate(RPK_total = sum(RPK),
-         TPM = (RPK / RPK_total) * 10^6)
-
-data_plot <- merge(data_plot, metadata[c("AERISVIR_Internal_ID", "CURRCOPD")], by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
-
-data_plot <- data_plot %>%
-  group_by(CURRCOPD, Host_Genus, replidec_lifestyle) %>%
-  mutate(N_samples = n(), .groups = "drop",
-         CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe")),
-         replidec_lifestyle = factor(replidec_lifestyle,
-                                     levels = c("Temperate", "Virulent", "Chronic")),
-         Host_Genus = ifelse(is.na(Host_Genus), "No iPHoP hit", Host_Genus)) %>%
-  group_by(Host_Genus) %>%
-  filter(sum(TPM) > 0)
-
-data_plot <- data_plot %>%
-  filter(Host_Genus %in% c("Haemophilus", "Prevotella", "Streptococcus"))
-
-sample_size <- data_plot %>% 
-  group_by(CURRCOPD) %>% 
-  summarise(N_samples = unique(N_samples), .groups = "drop") %>%
-  mutate(N = ifelse(CURRCOPD == "Moderate", paste0("Moderate\nN=", N_samples),
-                    ifelse(CURRCOPD == "Severe", paste0("Severe\nN=", N_samples), 
-                           paste0("Very Severe\nN=", N_samples))))
-
-excl_stat <- data_plot %>%
-  group_by(Host_Genus, replidec_lifestyle, CURRCOPD) %>%
-  summarize(var = n_distinct(TPM), .groups = "drop") %>%
-  group_by(Host_Genus, replidec_lifestyle) %>%
-  summarise(n_var = sum(var == 1), .groups = "drop") %>%
-  filter(n_var >= 2) %>%
-  pull(Host_Genus)
-
-stat.test <- data_plot %>%
-  filter(!Host_Genus %in% excl_stat) %>%
-  group_by(Host_Genus, replidec_lifestyle) %>%
-  wilcox_test(TPM ~ CURRCOPD, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position() %>%
-  mutate(y.position = y.position - 200000)
-
-ggplot(data_plot, (aes(x=CURRCOPD, y = TPM))) +
-  geom_boxplot(aes(color = Host_Genus, fill = Host_Genus), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = Host_Genus), width = 0.2, height = 0, size = 2, alpha = 0.3) +
-  scale_fill_manual(values = MyColorsHostGenus) +
-  scale_color_manual(values = MyColorsHostGenus) +
-  labs(x = "", y = "TPM") +
-  theme_minimal() +
-  theme(text = element_text(size = 12),
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor.y = element_blank(),
-        legend.position = "none",
-        strip.text.y.right = element_text(size = 10, margin = margin(l = 20)),
-        strip.text.x.top = element_text(size = 12, margin = margin(b = 30)),
-        panel.spacing = unit(1, "cm")) +
-  scale_y_continuous(labels = comma) +
-  scale_x_discrete(labels = setNames(sample_size$N, sample_size$CURRCOPD)) +
-  facet_grid(replidec_lifestyle ~ Host_Genus, scales = "free_x") +
-  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
-  coord_cartesian(ylim = c(0, 1000000), clip = "off")
-
-````
-
-## Figure S11
-````{r, fig.width = 10, fig.height = 12, fig.align = 'center'}
-samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
@@ -4041,8 +4432,8 @@ abundances_TPM_pos_only <- Mastertable_viral %>%
 abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
 
 data_plot <- abundances_TPM_pos_only %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
-  group_by(sample_ID, Final_FamilyN) %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  group_by(sample_ID, Final_Class) %>%
   summarize(RPK = sum(RPK), .groups = 'drop')
 
 data_plot <- data_plot %>%
@@ -4054,50 +4445,676 @@ data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Int
 
 data_plot <- data_plot %>%
   filter(CURRCOPD %in% c("Moderate", "Severe", "Very severe")) %>%
-  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe")))
-  
+  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"), ordered = TRUE),
+         Final_Class = factor(Final_Class, levels = c("Faserviricetes", "Malgrandaviricetes", "Caudoviricetes")))
+
 counts <- data_plot %>%
   group_by(CURRCOPD) %>%
   summarise(N = n_distinct(sample_ID))
 
 x_labels <- setNames(paste0(levels(data_plot$CURRCOPD), "\nN = ", counts$N), levels(data_plot$CURRCOPD))
 
-excl_stat <- data_plot %>%
-  group_by(Final_FamilyN, CURRCOPD) %>%
-  summarize(var = n_distinct(TPM), .groups = "drop") %>%
-  group_by(Final_FamilyN) %>%
-  summarise(n_var = sum(var == 1), .groups = "drop") %>%
-  filter(n_var >= 2) %>%
-  pull(Final_FamilyN)
+phage_classes <- unique(data_plot$Final_Class)
 
-stat.test <- data_plot %>% 
-  filter(!Final_FamilyN %in% excl_stat) %>%
-  group_by(Final_FamilyN) %>%
-  wilcox_test(TPM ~ CURRCOPD, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position() %>%
-  mutate(y.position = y.position - 100000)
+stat_results <- lapply(phage_classes, function(phage_class_val) {
+  
+  df <- data_plot %>%
+    filter(Final_Class == phage_class_val)
+  
+  if (length(unique(df$CURRCOPD)) < 3) {
+    return(NULL)
+  }
+  
+  model <- glmmTMB(
+    TPM ~ CURRCOPD + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  
+  pw_cmp_df %>%
+    mutate(
+      Final_Class = phage_class_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + 10000,
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
 
 ggplot(data_plot, (aes(x=CURRCOPD, y = TPM))) +
-  geom_boxplot(aes(color = Final_FamilyN, fill = Final_FamilyN), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = Final_FamilyN), width = 0.2, height = 0, size = 2, alpha = 0.3) +
-  scale_fill_manual(values = MyColorsPhageFamiliesN) +
-  scale_color_manual(values = MyColorsPhageFamiliesN) +
-  labs(x = "", y = "TPM") +
+  geom_boxplot(aes(color = Final_Class, fill = Final_Class), width = 0.5, alpha = 0.4, outlier.shape = NA) +
+  geom_jitter(aes(color = Final_Class), width = 0.2, height = 0, size = 2, alpha = 0.4) +
+  scale_fill_manual(values = MyColorsPhageClasses) +
+  scale_color_manual(values = MyColorsPhageClasses) +
+  labs(x = "", y = "Relative Abundance of Phage Classes (TPM)") +
   theme_minimal() +
-  theme(text = element_text(size = 6),
+  theme(text = element_text(size = 10),
         panel.grid.major.x = element_blank(),
         panel.grid.minor.y = element_blank(),
         legend.position = "none",
-        strip.text = element_text(size = 6, margin = margin(b = 25, t = 10))) +
+        strip.text = element_text(size = 12, margin = margin(b = 25, t = 10))) +
   scale_x_discrete(labels = x_labels) +
   scale_y_continuous(labels = comma) +
-  facet_wrap(~Final_FamilyN, scales = "free_x", strip.position = "top", ncol = 5) +
+  facet_wrap(~Final_Class, scales = "free_x", strip.position = "top", ncol = 5) +
   stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
   coord_cartesian(ylim = c(0, 1000000), clip = "off")
-````
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+
+## Figure S10
+
+### Figure S10a
+```{r, fig.width = 4, fig.height = 7, fig.align = 'center'}
+samples_with_reads <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  select(all_of(samples)) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  select_if(~ . > 0) %>%
+  colnames()
+
+abundances_TPM_pos_only <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  select(c("CONTIGS", "length", "replidec_lifestyle"), all_of(samples_with_reads)) %>%
+  pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
+
+abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
+
+data_plot <- abundances_TPM_pos_only %>%
+  group_by(sample_ID, replidec_lifestyle) %>%
+  summarize(RPK = sum(RPK), .groups = 'drop')
+
+data_plot <- data_plot %>%
+  group_by(sample_ID) %>%
+  mutate(RPK_total = sum(RPK),
+         TPM = (RPK / RPK_total) * 10^6)
+
+data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
+
+data_plot <- data_plot %>%
+  group_by(Exa_or_stable, replidec_lifestyle) %>%
+  mutate(N_samples = n(), .groups = "drop",
+         Exa_or_stable = factor(Exa_or_stable, levels = c("Stable_state", "Exacerbated_state")),
+         replidec_lifestyle = factor(replidec_lifestyle,
+                                     levels = c("Temperate", "Virulent", "Chronic")))
+
+sample_size <- data_plot %>% 
+  group_by(Exa_or_stable) %>% 
+  summarise(N_samples = unique(N_samples), .groups = "drop") %>%
+  mutate(N = ifelse(Exa_or_stable == "Exacerbated_state",
+                    paste0("Exacerbations\nN=", N_samples),
+                    paste0("Stable state\nN=", N_samples)))
+
+phage_lifestyles <- unique(data_plot$replidec_lifestyle)
+
+stat_results <- lapply(phage_lifestyles, function(lifestyle_val) {
+  
+  df <- data_plot %>%
+    filter(replidec_lifestyle == lifestyle_val)
+  
+  if (length(unique(df$Exa_or_stable)) < 2) {
+    return(NULL)
+  }
+  
+  model <- glmmTMB(
+    TPM ~ Exa_or_stable + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ Exa_or_stable)
+  pw_comparisons <- pairs(estimated_marginal_means)
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  
+  pw_cmp_df %>%
+    mutate(
+      replidec_lifestyle = lifestyle_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + 0.2,
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
+
+ggplot(data_plot, (aes(x=Exa_or_stable, y = TPM))) +
+  geom_boxplot(aes(color = replidec_lifestyle, fill = replidec_lifestyle), width = 0.5, alpha = 0.4, outlier.shape = NA) +
+  geom_jitter(aes(color = replidec_lifestyle), width = 0.2, height = 0, size = 2, alpha = 0.3) +
+  scale_fill_manual(values = wes_palette("IsleofDogs1")) +
+  scale_color_manual(values = wes_palette("IsleofDogs1")) +
+  labs(x = "", y = "Relative Abundance of Phages (TPM)") +
+  theme_minimal() +
+  theme(text = element_text(size = 12),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        legend.position = "none",
+        strip.text = element_text(size = 12, margin = margin(b = 25, t = 10))) +
+  scale_y_continuous(labels = comma) +
+  scale_x_discrete(labels = setNames(sample_size$N, sample_size$Exa_or_stable)) +
+  facet_wrap(~replidec_lifestyle, scales = "free_x", strip.position = "top", nrow = 6) +
+  stat_pvalue_manual(stat.test, label = "p.signif", hide.ns = TRUE, tip.length = 0) +
+  coord_cartesian(ylim = c(0, 1000000), clip = "off")
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+
+### Figure S10b
+```{r, fig.width = 4, fig.height = 7, fig.align = 'center'}
+samples_with_reads <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  select(all_of(samples)) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  select_if(~ . > 0) %>%
+  colnames()
+
+abundances_TPM_pos_only <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  select(c("CONTIGS", "length", "replidec_lifestyle"), all_of(samples_with_reads)) %>%
+  pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
+
+abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
+
+data_plot <- abundances_TPM_pos_only %>%
+  group_by(sample_ID, replidec_lifestyle) %>%
+  summarize(RPK = sum(RPK), .groups = 'drop')
+
+data_plot <- data_plot %>%
+  group_by(sample_ID) %>%
+  mutate(RPK_total = sum(RPK),
+         TPM = (RPK / RPK_total) * 10^6)
+
+data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
+
+data_plot <- data_plot %>%
+  group_by(CURRCOPD, replidec_lifestyle) %>%
+  mutate(N_samples = n(), .groups = "drop",
+         CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"), ordered = TRUE),
+         replidec_lifestyle = factor(replidec_lifestyle, levels = c("Temperate", "Virulent", "Chronic")))
+
+sample_size <- data_plot %>% 
+  group_by(CURRCOPD) %>% 
+  summarise(N_samples = unique(N_samples), .groups = "drop") %>%
+  mutate(N = ifelse(CURRCOPD == "Moderate", paste0("Moderate\nN=", N_samples),
+                    ifelse(CURRCOPD == "Severe", paste0("Severe\nN=", N_samples), 
+                           paste0("Very Severe\nN=", N_samples))))
+
+
+phage_lifestyles <- unique(data_plot$replidec_lifestyle)
+
+stat_results <- lapply(phage_lifestyles, function(lifestyle_val) {
+
+    df <- data_plot %>%
+    filter(replidec_lifestyle == lifestyle_val)
+  
+  if (length(unique(df$CURRCOPD)) < 3) {
+    return(NULL)
+  }
+  
+  model <- glmmTMB(
+    TPM ~ CURRCOPD + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  
+  pw_cmp_df %>%
+    mutate(
+      replidec_lifestyle = lifestyle_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + 10000,
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
+
+ggplot(data_plot, (aes(x=CURRCOPD, y = TPM))) +
+  geom_boxplot(aes(color = replidec_lifestyle, fill = replidec_lifestyle), width = 0.5, alpha = 0.4, outlier.shape = NA) +
+  geom_jitter(aes(color = replidec_lifestyle), width = 0.2, height = 0, size = 2, alpha = 0.3) +
+  scale_fill_manual(values = wes_palette("IsleofDogs1")) +
+  scale_color_manual(values = wes_palette("IsleofDogs1")) +
+  labs(x = "", y = "Relative Abundance of Phages (TPM)") +
+  theme_minimal() +
+  theme(text = element_text(size = 12),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        legend.position = "none",
+        strip.text = element_text(size = 12, margin = margin(b = 25, t = 10))) +
+  scale_y_continuous(labels = comma) +
+  scale_x_discrete(labels = setNames(sample_size$N, sample_size$CURRCOPD)) +
+  facet_wrap(~replidec_lifestyle, scales = "free_x", strip.position = "top", nrow = 6) +
+  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
+  coord_cartesian(ylim = c(0, 1000000), clip = "off")
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+
+## Figure S11
+
+### Figure S11a
+```{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
+abundance_bact <- Mastertable_bact %>%
+  pivot_longer(cols = starts_with("SRR"), names_to = "sample_ID", values_to = "mapped_reads")
+
+abundance_bact <- abundance_bact %>%
+  group_by(sample_ID, Order, Family, Genus, .groups = "drop") %>%
+  summarize(reads_by_genus = sum(mapped_reads)) %>%
+  group_by(sample_ID) %>%
+  mutate(total_reads_in_sample = sum(reads_by_genus),
+         rel_abund_by_genus = reads_by_genus/total_reads_in_sample*100)
+
+data_plot <- merge(abundance_bact, SRAruntable, by.x = "sample_ID", by.y = "Run", all = TRUE)
+data_plot <- data_plot %>%
+  rename(Date_Visits = Collection_Date, PID = subjectID)
+
+data_plot <- merge(data_plot, metadata, by = c("Date_Visits", "PID"), all = FALSE)
+
+data_summary <- data_plot %>%
+  group_by(PID, CURRCOPD, Order, Family, Genus, .groups = "drop") %>%
+  summarize(mean_patient = mean(rel_abund_by_genus), 
+            n_per_PID = n(), .groups = "drop") %>%
+  group_by(CURRCOPD, Order, Family, Genus, .groups = "drop") %>%
+  summarize(mean = mean(mean_patient),
+            N_samples = sum(n_per_PID),
+            N_patients = n(), .groups = "drop") %>%
+  group_by(Order, Family, Genus) %>%
+  mutate(Genus = ifelse(mean(mean) > 1, Genus, ifelse(is.na(Genus), "Unclassified", "Other bacterial genera"))) %>%
+  mutate(Genus = factor(Genus, levels = names(MyColorsHostGenus)))
+
+sample_size <- data_summary %>% 
+  group_by(CURRCOPD) %>% 
+  summarise(N_samples = unique(N_samples), 
+            N_patients = unique(N_patients), .groups = "drop") %>%
+  mutate(N = ifelse(CURRCOPD == "Moderate",
+                    paste0("Moderate\nN=", N_samples, " (", N_patients, " patients)"),
+                    ifelse(CURRCOPD == "Severe", 
+                           paste0("Severe\nN=", N_samples, " (", N_patients, " patients)"),
+                           paste0("Very Severe\nN=", N_samples, " (", N_patients, " patients)"))))
+
+data_summary$CURRCOPD <- factor(data_summary$CURRCOPD, levels = c("Moderate", "Severe", "Very severe"))
+
+ggplot(data = data_summary, aes(x = CURRCOPD, y = mean, fill = Genus)) +
+  geom_bar(stat = "identity") + 
+  scale_y_continuous(expand=c(0,0)) +
+  labs(x = "", y = "Relative Abundance of Bacterial Genera (%)", fill = "Bacterial Genus")  +
+  scale_fill_manual(values = MyColorsHostGenus, breaks = names(MyColorsHostGenus)) +
+  scale_x_discrete(labels = setNames(sample_size$N, sample_size$CURRCOPD)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_text(size = 12),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 12))
+
+data_summary <- data_plot %>%
+  mutate(ExaSev = case_when(ExaSev == "Mild" ~ "MildModerate",
+                            ExaSev == "Moderate" ~ "MildModerate",
+                            ExaSev == "Severe" ~ "Severe",
+                            is.na(ExaSev) ~ "No_exa"))
+
+data_summary <- data_summary %>%
+  group_by(PID, Exa_or_stable, Order, Family, Genus, ExaSev) %>%
+  summarize(mean_patient = mean(rel_abund_by_genus), 
+            n_per_PID = n(), .groups = "drop") %>%
+  group_by(Exa_or_stable, Order, Family, Genus, ExaSev) %>%
+  summarize(mean = mean(mean_patient),
+            N_samples = sum(n_per_PID),
+            N_patients = n(), .groups = "drop") %>%
+  group_by(Order, Family, Genus) %>%
+  mutate(Genus = ifelse(mean(mean) > 1, Genus, ifelse(is.na(Genus), "Unclassified", "Other bacterial genera")))
+
+data_summary <- data_summary %>%
+  mutate(Exa_or_stable = factor(Exa_or_stable, levels = c("Stable_state", "Exacerbated_state"))) %>%
+  mutate(ExaSev = factor(ExaSev, levels = c("No_exa", "MildModerate", "Severe"))) %>%
+  mutate(Exa_or_stable_ExaSev = interaction(Exa_or_stable, ExaSev, sep = "_")) %>%
+  mutate(Genus = factor(Genus, levels = names(MyColorsHostGenus)))
+
+sample_size <- data_summary %>% 
+  group_by(Exa_or_stable_ExaSev) %>% 
+  summarise(N_samples = unique(N_samples), 
+            N_patients = unique(N_patients), .groups = "drop") %>%
+  mutate(N = case_when(grepl("Exacerbated_state_MildModerate", Exa_or_stable_ExaSev) ~ paste0("Mild/Moderate Exacerbations\nN=", N_samples, "\n(", N_patients, " patients)"),
+                       grepl("Exacerbated_state_Severe", Exa_or_stable_ExaSev) ~ paste0("Severe Exacerbations\nN=", N_samples, "\n(", N_patients, " patients)"),
+                       grepl("Stable_state", Exa_or_stable_ExaSev) ~ paste0("Stable state\nN=", N_samples, "\n(", N_patients, " patients)")))
+
+x_labels <- setNames(sample_size$N, sample_size$Exa_or_stable_ExaSev)
+
+ggplot(data = data_summary, aes(x = Exa_or_stable_ExaSev, y = mean, fill = Genus)) +
+  geom_bar(stat = "identity") + 
+  scale_y_continuous(expand=c(0,0)) +
+  labs(x = "", y = "Relative Abundance of Bacterial Genera (%)", fill = "Bacterial Genus")  +
+  scale_fill_manual(values = MyColorsHostGenus, breaks = names(MyColorsHostGenus)) +
+  scale_x_discrete(labels = x_labels) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_text(size = 12),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 12))
+
+
+```
+
+### Figure S11b
+```{r, fig.width = 13, fig.height = 4, fig.align = 'center'}
+Genus_Top5 <- data_plot %>%
+  group_by(Order, Family, Genus) %>%
+  summarize(mean_rel = mean(rel_abund_by_genus), .groups = "drop") %>%
+  arrange(desc(mean_rel)) %>%
+  slice_head(n = 5) %>%
+  pull(Genus)
+
+data_summary <- data_plot %>%
+  filter(Genus %in% Genus_Top5) %>%
+  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"),
+                           labels = c("Moderate", "Severe", "Very severe")))
+
+counts <- data_summary %>%
+  group_by(CURRCOPD) %>%
+  summarise(N = n_distinct(sample_ID))
+
+x_labels <- setNames(paste0(levels(data_summary$CURRCOPD), "\nN = ", counts$N), levels(data_summary$CURRCOPD))
+
+bact_genera <- unique(data_summary$Genus)
+
+stat_results <- lapply(bact_genera, function(bact_gen_val) {
+  
+  df <- data_summary %>%
+    filter(Genus == bact_gen_val)
+  
+  model <- glmmTMB(
+    rel_abund_by_genus ~ CURRCOPD + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_abund <- max(df$rel_abund_by_genus, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  
+  pw_cmp_df %>%
+    mutate(
+      Genus = bact_gen_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_abund + c(10, 20, 30),
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
+
+ggplot(data_summary, (aes(x=CURRCOPD, y = rel_abund_by_genus))) +
+  geom_boxplot(aes(color = Genus, fill = Genus), width = 0.5, alpha = 0.4, outlier.shape = NA) +
+  geom_jitter(aes(color = Genus), width = 0.2, height = 0, size = 2, alpha = 0.3) +
+  scale_fill_manual(values = MyColorsHostGenus) +
+  scale_color_manual(values = MyColorsHostGenus) +
+  scale_x_discrete(labels = x_labels) +
+  labs(x = "", y = "Relative abundance of/nBacterial Genera (%)") +
+  theme_minimal() +
+  theme(text = element_text(size = 12),
+    panel.grid.major.x = element_blank(),
+    legend.position = "none",
+    strip.text = element_text(margin = margin(b = 40))) +
+  facet_wrap(~Genus, scales = "free_x", strip.position = "top", nrow = 1) +
+  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) + 
+  coord_cartesian(ylim = c(0, 100), clip = "off")
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
+
+### Figure S11c
+```{r, fig.width = 13, fig.height = 4, fig.align = 'center'}
+data_summary <- data_plot %>%
+  mutate(ExaSev = case_when(ExaSev == "Mild" ~ "MildModerate",
+                            ExaSev == "Moderate" ~ "MildModerate",
+                            ExaSev == "Severe" ~ "Severe",
+                            is.na(ExaSev) ~ "No_exa"))
+
+Genus_Top5 <- data_summary %>%
+  group_by(Order, Family, Genus) %>%
+  summarize(mean_rel = mean(rel_abund_by_genus), .groups = "drop") %>%
+  arrange(desc(mean_rel)) %>%
+  slice_head(n = 5) %>%
+  pull(Genus)
+
+data_summary <- data_summary %>%
+  filter(Genus %in% Genus_Top5) %>%
+  mutate(ExaSev = factor(ExaSev,
+                         levels = c("No_exa", "MildModerate", "Severe"),
+                         labels = c("No Exacerbation", "Mild/Moderate\nExacerbations", "Severe\nExacerbations")))
+
+counts <- data_summary %>%
+  group_by(ExaSev) %>%
+  summarise(N = n_distinct(sample_ID))
+
+x_labels <- setNames(paste0(levels(data_summary$ExaSev), "\nN = ", counts$N), levels(data_summary$ExaSev))
+
+bact_genera <- unique(data_summary$Genus)
+
+stat_results <- lapply(bact_genera, function(bact_gen_val) {
+  
+  df <- data_summary %>%
+    filter(Genus == bact_gen_val)
+  
+  model <- glmmTMB(
+    rel_abund_by_genus ~ ExaSev + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_abund <- max(df$rel_abund_by_genus, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ ExaSev)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+  
+  pw_cmp_df %>%
+    mutate(
+      Genus = bact_gen_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_abund + c(10, 20, 30),
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
+
+ggplot(data_summary, (aes(x=ExaSev, y = rel_abund_by_genus))) +
+  geom_boxplot(aes(color = Genus, fill = Genus), width = 0.5, alpha = 0.4, outlier.shape = NA) +
+  geom_jitter(aes(color = Genus), width = 0.2, height = 0, size = 2, alpha = 0.3) +
+  scale_fill_manual(values = MyColorsHostGenus) +
+  scale_color_manual(values = MyColorsHostGenus) +
+  scale_x_discrete(labels = x_labels) +
+  labs(x = "", y = "Relative abundance of/nBacterial Genera (%)") +
+  theme_minimal() +
+  theme(text = element_text(size = 12),
+        axis.text.x = element_text(size = 7),
+        panel.grid.major.x = element_blank(),
+        legend.position = "none") +
+  facet_wrap(~Genus, scales = "free_x", strip.position = "top", nrow = 1) +
+  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
 
 ## Figure S12
-````{r, fig.width = 11, fig.height = 12, fig.align = 'center'}
+```{r, fig.width = 10, fig.height = 12, fig.align = 'center'}
+samples_with_reads <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
+  select(all_of(samples)) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  select_if(~ . > 0) %>%
+  colnames()
+
+abundances_TPM_pos_only <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
+  select(c("CONTIGS", "length"), all_of(samples_with_reads), all_of(grep("^Host", colnames(Mastertable_viral)))) %>%
+  pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
+
+abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
+
+data_plot <- abundances_TPM_pos_only %>%
+  group_by(sample_ID, Host_Genus) %>%
+  summarize(RPK = sum(RPK), .groups = 'drop')
+
+data_plot <- data_plot %>%
+  group_by(sample_ID) %>%
+  mutate(RPK_total = sum(RPK),
+         TPM = (RPK / RPK_total) * 10^6)
+
+data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
+
+data_plot <- data_plot %>%
+  group_by(Exa_or_stable, Host_Genus) %>%
+  mutate(N_samples = n(), .groups = "drop",
+         Exa_or_stable = factor(Exa_or_stable, levels = c("Stable_state", "Exacerbated_state")))
+
+data_plot$Host_Genus[is.na(data_plot$Host_Genus)] <- "No iPHoP hit"
+
+sample_size <- data_plot %>% 
+  group_by(Exa_or_stable) %>% 
+  summarise(N_samples = unique(N_samples), .groups = "drop") %>%
+  mutate(N = ifelse(Exa_or_stable == "Exacerbated_state",
+                    paste0("Exacerbations\nN=", N_samples),
+                    paste0("Stable state\nN=", N_samples)))
+
+excl_host <- data_plot %>%
+  group_by(Host_Genus) %>%
+  summarise(
+    n_samples = n(),
+    n_detected = sum(TPM > 0),
+    prevalence = n_detected / n_samples) %>%
+  filter(prevalence < 0.05) %>%
+  pull(Host_Genus)
+
+stat_df <- data_plot %>%
+  filter(!Host_Genus %in% excl_host)
+
+host_genera <- unique(stat_df$Host_Genus)
+
+stat_results <- lapply(host_genera, function(hostg) {
+  
+  df <- stat_df %>%
+    filter(Host_Genus == hostg)
+  
+  model <- glmmTMB(
+    TPM ~ Exa_or_stable + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ Exa_or_stable)
+  pw_comparisons <- pairs(estimated_marginal_means)
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  
+  pw_cmp_df %>%
+    mutate(
+      Host_Genus = hostg,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + 150000,
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
+
+ggplot(data_plot, (aes(x=Exa_or_stable, y = TPM))) +
+  geom_boxplot(aes(color = Host_Genus, fill = Host_Genus), width = 0.5, alpha = 0.4, outlier.shape = NA) +
+  geom_jitter(aes(color = Host_Genus), width = 0.2, height = 0, size = 2, alpha = 0.3) +
+  scale_fill_manual(values = MyColorsHostGenus) +
+  scale_color_manual(values = MyColorsHostGenus) +
+  labs(x = "", y = "Relative Abundance of Phages (TPM)") +
+  theme_minimal() +
+  theme(text = element_text(size = 12),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        strip.text = element_text(margin = margin(b = 20, t = 10)),
+        legend.position = "none") +
+  scale_y_continuous(labels = comma) +
+  scale_x_discrete(labels = setNames(sample_size$N, sample_size$Exa_or_stable)) +
+  facet_wrap(~Host_Genus, scales = "free_x", strip.position = "top", ncol = 5) +
+  stat_pvalue_manual(stat.test, label = "p.signif", hide.ns = TRUE, tip.length = 0) +
+  coord_cartesian(ylim = c(0, 1000000), clip = "off")
+```
+
+## Figure S12
+```{r, fig.width = 11, fig.height = 12, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
   filter(!Final_viral == "Eukaryotic viruses") %>%
   select(all_of(samples)) %>%
@@ -4159,329 +5176,132 @@ ggplot(data_plot, (aes(x=Exa_or_stable, y = TPM))) +
   facet_wrap(~Host_Genus, scales = "free_x", strip.position = "top", ncol = 5) +
   stat_pvalue_manual(stat.test, label = "p.signif", hide.ns = TRUE, tip.length = 0) +
   coord_cartesian(ylim = c(0, 1000000), clip = "off")
-````
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
 
 ## Figure S13
+```{r, fig.width = 10, fig.height = 15, fig.align = 'center'}
+samples_with_reads <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
+  select(all_of(samples)) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  select_if(~ . > 0) %>%
+  colnames()
 
-### Figure S13a
-````{r, fig.width = 13, fig.height = 7, fig.align = 'center'}
-funct_annot_COI <- funct_annot %>%
-  filter(Host_Genus == "Streptococcus")
+abundances_TPM_pos_only <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
+  select(c("CONTIGS", "length"), all_of(samples_with_reads), all_of(grep("^Host", colnames(Mastertable_viral)))) %>%
+  pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
 
-genome_seqs <- funct_annot_COI %>%
-  select(seq_id, length, genome_label) %>%
-  distinct()
+abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
 
-gggenomes(genes = funct_annot_COI, seqs = genome_seqs) +
-  geom_seq() + 
-  geom_seq_label(aes(label = genome_label), size = 3, nudge_y = 0.4) + 
-  geom_gene(aes(fill = fill_group), size = 8, stroke = 0.1, color = "#5A5156") + 
-  scale_fill_manual(values = MyColorsPhrog, breaks = names(phrog_colors)) +
-  geom_gene_tag(aes(label = vf_label, color = "#B40F20"),
-                na.rm = TRUE, size = 2.5, angle = -20, nudge_y = -0.15, vjust = 1, hjust = 0) +
-  geom_gene_tag(aes(label = moron_amg_label, color = "#C075A6"),
-                na.rm = TRUE, size = 2.5,  angle = -20, nudge_y = -0.15, vjust = 1, hjust = 0) +
-  scale_color_identity(guide = "none") +
-  theme(legend.position = "right") +
-  labs(fill = "PHROG Categories")
+data_plot <- abundances_TPM_pos_only %>%
+  group_by(sample_ID, Host_Genus) %>%
+  summarize(RPK = sum(RPK), .groups = 'drop')
 
-````
-
-### Figure S13b
-````{r, fig.width = 13, fig.height = 6, fig.align = 'center'}
-funct_annot_COI <- funct_annot %>%
-  filter(Host_Genus == "Nanosynbacter")
-
-genome_seqs <- funct_annot_COI %>%
-  select(seq_id, length, genome_label) %>%
-  distinct()
-
-gggenomes(genes = funct_annot_COI, seqs = genome_seqs) +
-  geom_seq() + 
-  geom_seq_label(aes(label = genome_label), size = 3, nudge_y = 0.4) + 
-  geom_gene(aes(fill = fill_group), size = 8, stroke = 0.1, color = "#5A5156") + 
-  scale_fill_manual(values = MyColorsPhrog, breaks = names(phrog_colors)) +
-  geom_gene_tag(aes(label = vf_label, color = "#B40F20"),
-                na.rm = TRUE, size = 2.5, angle = -20, nudge_y = -0.15, vjust = 1, hjust = 0) +
-  geom_gene_tag(aes(label = moron_amg_label, color = "#C075A6"),
-                na.rm = TRUE, size = 2.5,  angle = -20, nudge_y = -0.15, vjust = 1, hjust = 0) +
-  scale_color_identity(guide = "none") +
-  theme(legend.position = "right") +
-  labs(fill = "PHROG Categories") 
-````
-
-### Figure S13c
-````{r, fig.width = 5, fig.height = 4, fig.align = 'center'}
-contigs_of_interest <- funct_annot %>%
-  filter(funct == "virulence factor, DefenseFinder protein") %>%
-  filter(Host_Genus == "Nanosynbacter") %>%
-  distinct(seq_id) %>%
-  pull(seq_id)
-
-samples_with_nanos_vf <- Mastertable_viral %>%
-  filter(CONTIGS %in% contigs_of_interest) %>%
-  select(samples) %>%
-  pivot_longer(cols = samples, names_to = "sample_ID", values_to = "mapped_reads") %>%
-  filter(mapped_reads > 0) %>%
-  distinct(sample_ID) %>%
-  pull(sample_ID)
-
-abundance_bact <- Mastertable_bact %>%
-  pivot_longer(cols = starts_with("SRR"), names_to = "sample_ID", values_to = "mapped_reads")
-
-abundance_bact <- abundance_bact %>%
-  group_by(sample_ID, Order, Family, Genus, .groups = "drop") %>%
-  summarize(reads_by_genus = sum(mapped_reads)) %>%
+data_plot <- data_plot %>%
   group_by(sample_ID) %>%
-  mutate(total_reads_in_sample = sum(reads_by_genus),
-         rel_abund_by_genus = reads_by_genus/total_reads_in_sample*100)
+  mutate(RPK_total = sum(RPK),
+         TPM = (RPK / RPK_total) * 10^6)
 
-abundance_bact <- merge(abundance_bact, SRAruntable, by.x = "sample_ID", by.y = "Run", all = TRUE)
+data_plot <- merge(data_plot, metadata, by.x = "sample_ID", by.y = "AERISVIR_Internal_ID", all = FALSE)
 
-abundance_bact <- abundance_bact %>%
-  rename(Date_Visits = Collection_Date, PID = subjectID, SRR_ID = sample_ID)
-
-abundance_bact <- merge(abundance_bact, metadata, 
-                        by = c("Date_Visits", "PID"), all = FALSE)
-
-data_plot <- abundance_bact %>%
-  select(rel_abund_by_genus, Genus, AERISVIR_Internal_ID) %>%
-  filter(Genus == "TM7x") %>%
-  mutate(VF_presence = ifelse(AERISVIR_Internal_ID %in% samples_with_nanos_vf, 
-                              "Presence\nof phage(s) carrying VF/DF", 
-                              "Absence\nof phage(s) carrying VF/DF"),
-         VF_presence = factor(VF_presence, levels = c("Absence\nof phage(s) carrying VF/DF", "Presence\nof phage(s) carrying VF/DF")))
+data_plot <- data_plot %>%
+  filter(CURRCOPD %in% c("Moderate", "Severe", "Very severe")) %>%
+  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"), ordered = TRUE)) %>%
+  mutate(Host_Genus = ifelse(is.na(Host_Genus), "No iPHoP hit", Host_Genus)) %>%
+  group_by(Host_Genus) %>%
+  filter(sum(TPM) > 0)
 
 counts <- data_plot %>%
-  group_by(VF_presence) %>%
-  summarise(N = n_distinct(AERISVIR_Internal_ID))
-
-x_labels <- setNames(paste0(levels(data_plot$VF_presence), "\nN = ", counts$N), levels(data_plot$VF_presence))
-
-stat.test <- data_plot %>% 
-  wilcox_test(rel_abund_by_genus ~ VF_presence) %>%
-  add_significance() %>%
-  add_xy_position(x = "VF_presence")
-
-ggplot(data_plot, aes(x = VF_presence, y = rel_abund_by_genus)) +
-  geom_boxplot(aes(color = VF_presence, fill = VF_presence), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = VF_presence), width = 0.2, height = 0, size = 2, alpha = 0.3) +
-  scale_fill_manual(values = c("#8E8E8E","#B40F20")) +
-  scale_color_manual(values = c("#8E8E8E","#B40F20")) +
-  scale_x_discrete(labels = x_labels) +
-  labs(x = "", y = "Nanosynbacter bacteria (%)") +
-  theme_minimal() +
-  theme(
-    text = element_text(size = 12),
-    axis.title.y = element_text(margin = margin(r = 15)),
-    panel.grid.major.x = element_blank(),
-    panel.grid.major.y = element_line(size = 1),
-    legend.position = "none") +
-  stat_pvalue_manual(stat.test, label = "p.signif", hide.ns = TRUE, tip.length = 0)
-
-````
-
-## Figure S14
-
-### Figure S14a
-````{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
-abundance_bact <- Mastertable_bact %>%
-  pivot_longer(cols = starts_with("SRR"), names_to = "sample_ID", values_to = "mapped_reads")
-
-abundance_bact <- abundance_bact %>%
-  group_by(sample_ID, Order, Family, Genus, .groups = "drop") %>%
-  summarize(reads_by_genus = sum(mapped_reads)) %>%
-  group_by(sample_ID) %>%
-  mutate(total_reads_in_sample = sum(reads_by_genus),
-         rel_abund_by_genus = reads_by_genus/total_reads_in_sample*100)
-
-data_plot <- merge(abundance_bact, SRAruntable, by.x = "sample_ID", by.y = "Run", all = TRUE)
-data_plot <- data_plot %>%
-  rename(Date_Visits = Collection_Date, PID = subjectID)
-
-data_plot <- merge(data_plot, metadata, by = c("Date_Visits", "PID"), all = FALSE)
-
-data_summary <- data_plot %>%
-  group_by(PID, CURRCOPD, Order, Family, Genus, .groups = "drop") %>%
-  summarize(mean_patient = mean(rel_abund_by_genus), 
-            n_per_PID = n(), .groups = "drop") %>%
-  group_by(CURRCOPD, Order, Family, Genus, .groups = "drop") %>%
-  summarize(mean = mean(mean_patient),
-            N_samples = sum(n_per_PID),
-            N_patients = n(), .groups = "drop") %>%
-  group_by(Order, Family, Genus) %>%
-  mutate(Genus = ifelse(mean(mean) > 1, Genus, ifelse(is.na(Genus), "Unclassified", "Other bacterial genera"))) %>%
-  mutate(Genus = factor(Genus, levels = names(MyColorsHostGenus)))
-
-sample_size <- data_summary %>% 
-  group_by(CURRCOPD) %>% 
-  summarise(N_samples = unique(N_samples), 
-            N_patients = unique(N_patients), .groups = "drop") %>%
-  mutate(N = ifelse(CURRCOPD == "Moderate",
-                    paste0("Moderate\nN=", N_samples, " (", N_patients, " patients)"),
-                    ifelse(CURRCOPD == "Severe", 
-                           paste0("Severe\nN=", N_samples, " (", N_patients, " patients)"),
-                           paste0("Very Severe\nN=", N_samples, " (", N_patients, " patients)"))))
-
-data_summary$CURRCOPD <- factor(data_summary$CURRCOPD, levels = c("Moderate", "Severe", "Very severe"))
-
-ggplot(data = data_summary, aes(x = CURRCOPD, y = mean, fill = Genus)) +
-  geom_bar(stat = "identity") + 
-  scale_y_continuous(expand=c(0,0)) +
-  labs(x = "", y = "Relative Abundance (%)", fill = "Bacterial Genus")  +
-  scale_fill_manual(values = MyColorsHostGenus, breaks = names(MyColorsHostGenus)) +
-  scale_x_discrete(labels = setNames(sample_size$N, sample_size$CURRCOPD)) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(size = 8),
-        axis.text.y = element_text(size = 8),
-        axis.title.y = element_text(size = 12),
-        legend.text = element_text(size = 8),
-        legend.title = element_text(size = 12))
-
-data_summary <- data_plot %>%
-  mutate(ExaSev = case_when(ExaSev == "Mild" ~ "MildModerate",
-                            ExaSev == "Moderate" ~ "MildModerate",
-                            ExaSev == "Severe" ~ "Severe",
-                            is.na(ExaSev) ~ "No_exa"))
-
-data_summary <- data_summary %>%
-  group_by(PID, Exa_or_stable, Order, Family, Genus, ExaSev) %>%
-  summarize(mean_patient = mean(rel_abund_by_genus), 
-            n_per_PID = n(), .groups = "drop") %>%
-  group_by(Exa_or_stable, Order, Family, Genus, ExaSev) %>%
-  summarize(mean = mean(mean_patient),
-            N_samples = sum(n_per_PID),
-            N_patients = n(), .groups = "drop") %>%
-  group_by(Order, Family, Genus) %>%
-  mutate(Genus = ifelse(mean(mean) > 1, Genus, ifelse(is.na(Genus), "Unclassified", "Other bacterial genera")))
-
-data_summary <- data_summary %>%
-  mutate(Exa_or_stable = factor(Exa_or_stable, levels = c("Stable_state", "Exacerbated_state"))) %>%
-  mutate(ExaSev = factor(ExaSev, levels = c("No_exa", "MildModerate", "Severe"))) %>%
-  mutate(Exa_or_stable_ExaSev = interaction(Exa_or_stable, ExaSev, sep = "_")) %>%
-  mutate(Genus = factor(Genus, levels = names(MyColorsHostGenus)))
-
-sample_size <- data_summary %>% 
-  group_by(Exa_or_stable_ExaSev) %>% 
-  summarise(N_samples = unique(N_samples), 
-            N_patients = unique(N_patients), .groups = "drop") %>%
-  mutate(N = case_when(grepl("Exacerbated_state_MildModerate", Exa_or_stable_ExaSev) ~ paste0("Mild/Moderate Exacerbations\nN=", N_samples, "\n(", N_patients, " patients)"),
-                       grepl("Exacerbated_state_Severe", Exa_or_stable_ExaSev) ~ paste0("Severe Exacerbations\nN=", N_samples, "\n(", N_patients, " patients)"),
-                       grepl("Stable_state", Exa_or_stable_ExaSev) ~ paste0("Stable state\nN=", N_samples, "\n(", N_patients, " patients)")))
-
-x_labels <- setNames(sample_size$N, sample_size$Exa_or_stable_ExaSev)
-
-ggplot(data = data_summary, aes(x = Exa_or_stable_ExaSev, y = mean, fill = Genus)) +
-  geom_bar(stat = "identity") + 
-  scale_y_continuous(expand=c(0,0)) +
-  labs(x = "", y = "Relative Abundance (%)", fill = "Bacterial Genus")  +
-  scale_fill_manual(values = MyColorsHostGenus, breaks = names(MyColorsHostGenus)) +
-  scale_x_discrete(labels = x_labels) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(size = 8),
-        axis.text.y = element_text(size = 8),
-        axis.title.y = element_text(size = 12),
-        legend.text = element_text(size = 8),
-        legend.title = element_text(size = 12))
-
-
-````
-
-### Figure S14b
-````{r, fig.width = 13, fig.height = 4, fig.align = 'center'}
-Genus_Top5 <- data_plot %>%
-  group_by(Order, Family, Genus) %>%
-  summarize(mean_rel = mean(rel_abund_by_genus), .groups = "drop") %>%
-  arrange(desc(mean_rel)) %>%
-  slice_head(n = 5) %>%
-  pull(Genus)
-
-data_summary <- data_plot %>%
-  filter(Genus %in% Genus_Top5) %>%
-  mutate(CURRCOPD = factor(CURRCOPD, levels = c("Moderate", "Severe", "Very severe"),
-                           labels = c("Moderate", "Severe", "Very severe")))
-
-counts <- data_summary %>%
   group_by(CURRCOPD) %>%
   summarise(N = n_distinct(sample_ID))
 
-x_labels <- setNames(paste0(levels(data_summary$CURRCOPD), "\nN = ", counts$N), levels(data_summary$CURRCOPD))
+x_labels <- setNames(paste0(levels(data_plot$CURRCOPD), "\nN = ", counts$N), levels(data_plot$CURRCOPD))
 
-stat.test <- data_summary %>%
-  group_by(Genus) %>%
-  wilcox_test(rel_abund_by_genus ~ CURRCOPD, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position()
+excl_host <- data_plot %>%
+  group_by(Host_Genus) %>%
+  summarise(
+    n_samples = n(),
+    n_detected = sum(TPM > 0),
+    prevalence = n_detected / n_samples) %>%
+  filter(prevalence < 0.05) %>%
+  pull(Host_Genus)
 
-ggplot(data_summary, (aes(x=CURRCOPD, y = rel_abund_by_genus))) +
-  geom_boxplot(aes(color = Genus, fill = Genus), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = Genus), width = 0.2, height = 0, size = 2, alpha = 0.3) +
+stat_df <- data_plot %>%
+  filter(!Host_Genus %in% excl_host)
+
+host_genera <- unique(stat_df$Host_Genus)
+
+stat_results <- lapply(host_genera, function(hostg) {
+  
+  df <- stat_df %>%
+    filter(Host_Genus == hostg)
+  
+  model <- glmmTMB(
+    TPM ~ CURRCOPD + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ CURRCOPD)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  
+  pw_cmp_df %>%
+    mutate(
+      Host_Genus = hostg,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + c(0.2, 0.4, 0.6),
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+  })
+  
+stat.test <- bind_rows(stat_results)  
+
+ggplot(data_plot, (aes(x=CURRCOPD, y = TPM))) +
+  geom_boxplot(aes(color = Host_Genus, fill = Host_Genus), width = 0.5, alpha = 0.4, outlier.shape = NA) +
+  geom_jitter(aes(color = Host_Genus), width = 0.2, height = 0, size = 2, alpha = 0.3) +
   scale_fill_manual(values = MyColorsHostGenus) +
   scale_color_manual(values = MyColorsHostGenus) +
-  scale_x_discrete(labels = x_labels) +
-  labs(x = "", y = "Relative abundance (%)") +
+  labs(x = "", y = "Relative Abundance of Phages (TPM)") +
   theme_minimal() +
   theme(text = element_text(size = 12),
-    panel.grid.major.x = element_blank(),
-    legend.position = "none",
-    strip.text = element_text(margin = margin(b = 40))) +
-  facet_wrap(~Genus, scales = "free_x", strip.position = "top", nrow = 1) +
-  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) + 
-  coord_cartesian(ylim = c(0, 100), clip = "off")
-
-````
-
-### Figure S14c
-````{r, fig.width = 13, fig.height = 4, fig.align = 'center'}
-data_summary <- data_plot %>%
-  mutate(ExaSev = case_when(ExaSev == "Mild" ~ "MildModerate",
-                            ExaSev == "Moderate" ~ "MildModerate",
-                            ExaSev == "Severe" ~ "Severe",
-                            is.na(ExaSev) ~ "No_exa"))
-
-Genus_Top5 <- data_summary %>%
-  group_by(Order, Family, Genus) %>%
-  summarize(mean_rel = mean(rel_abund_by_genus), .groups = "drop") %>%
-  arrange(desc(mean_rel)) %>%
-  slice_head(n = 5) %>%
-  pull(Genus)
-
-data_summary <- data_summary %>%
-  filter(Genus %in% Genus_Top5) %>%
-  mutate(ExaSev = factor(ExaSev,
-                         levels = c("No_exa", "MildModerate", "Severe"),
-                         labels = c("No Exacerbation", "Mild/Moderate\nExacerbations", "Severe\nExacerbations")))
-
-counts <- data_summary %>%
-  group_by(ExaSev) %>%
-  summarise(N = n_distinct(sample_ID))
-
-x_labels <- setNames(paste0(levels(data_summary$ExaSev), "\nN = ", counts$N), levels(data_summary$ExaSev))
-
-stat.test <- data_summary %>% 
-  group_by(Genus) %>%
-  wilcox_test(rel_abund_by_genus ~ ExaSev, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position()
-
-ggplot(data_summary, (aes(x=ExaSev, y = rel_abund_by_genus))) +
-  geom_boxplot(aes(color = Genus, fill = Genus), width = 0.5, alpha = 0.4, outlier.shape = NA) +
-  geom_jitter(aes(color = Genus), width = 0.2, height = 0, size = 2, alpha = 0.3) +
-  scale_fill_manual(values = MyColorsHostGenus) +
-  scale_color_manual(values = MyColorsHostGenus) +
-  scale_x_discrete(labels = x_labels) +
-  labs(x = "", y = "Relative abundance (%)") +
-  theme_minimal() +
-  theme(text = element_text(size = 12),
-        axis.text.x = element_text(size = 7),
         panel.grid.major.x = element_blank(),
-        legend.position = "none") +
-  facet_wrap(~Genus, scales = "free_x", strip.position = "top", nrow = 1) +
-  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0)
-````
+        legend.position = "none",
+        strip.text = element_text(size = 8)) +
+  scale_x_discrete(labels = x_labels) +
+  scale_y_continuous(labels = comma) +
+  facet_wrap(~Host_Genus, scales = "free_x", strip.position = "top", ncol = 4) +
+  stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
+  coord_cartesian(ylim = c(0, 1000000), clip = "off")
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
 
-## Figure S15
-````{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
+## Figure S14
+```{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
 abundances_TPM <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
+  filter(!grepl("V_length", CONTIGS)) %>%
+  filter(provirus == "No") %>%
   select(c("CONTIGS", "length"), all_of(samples), all_of(grep("^Final", colnames(Mastertable_viral)))) %>%
   pivot_longer(cols = samples, names_to = "sample_ID", values_to = "mapped_reads") 
 
@@ -4504,24 +5324,72 @@ abundances_TPM <- merge(abundances_TPM, metadata[,c("AERISVIR_Internal_ID", "PID
 
 data_plot <- merge(abundances_TPM, diversity_bact, by = c("Date_Visits", "PID"), all = FALSE)
 
-cor_test <- cor.test(data_plot$shannon_vir_diversity, data_plot$Shannon, method = "pearson", use = pairwise.complete.obs)
-r <- round(cor_test$estimate, 3)
-p_value <- ifelse(cor_test$p.value < 0.001, "< 0.001", paste0("= ", round(cor_test$p.value, 3)))
+model <- glmmTMB(shannon_vir_diversity ~ Shannon + (1|PID), family = tweedie(), data = data_plot)
+
+sim <- simulateResiduals(model)
+testUniformity(sim, plot = FALSE)
+testDispersion(sim, plot = FALSE)
+testZeroInflation(sim, plot = FALSE)
+
+summary_model <- summary(model)
+
+beta <- summary_model$coefficients$cond["Shannon", "Estimate"]
+se   <- summary_model$coefficients$cond["Shannon", "Std. Error"]
+p    <- ifelse(summary_model$coefficients$cond["Shannon", "Pr(>|z|)"] < 0.001, "< 0.001", 
+               paste0("= ", round(summary_model$coefficients$cond["Shannon", "Pr(>|z|)"], 3)))
+
+ci <- confint(model, method = "Wald")["Shannon", ]
+IRR <- exp(beta)
+CI_IRR <- exp(ci)
 
 ggplot(data_plot, aes(x = Shannon, y = shannon_vir_diversity)) +
   geom_point(aes(size = 5), alpha = 0.3,  color = "grey" , fill = "grey") +
   theme_minimal() +
   theme(legend.position = "none") +
   annotate("text", x = max(data_plot$Shannon), y = max(data_plot$shannon_vir_diversity), 
-           label = paste0("Pearson's r = ", r, ", p ", p_value),
+           label = paste0("Tweedie GLMM: IRR = ", round(IRR, 2), 
+                          " (95% CI = ", round(CI_IRR[1], 2), "-", round(CI_IRR[2], 2), "), p ", p), 
            hjust = 1.1, vjust = 1.1) +
   labs(x = "Shannon Bacterial Diversity", y = "Shannon Phage Diversity")
+```
 
-````
+## Figure S15
+```{r, fig.width = 13, fig.height = 22, fig.align = 'center'}
+funct_annot_COI <- funct_annot %>%
+  filter(is.na(Host_Genus) |
+      !(Host_Genus == "Haemophilus" & !grepl("V_length", seq_id))) %>%
+  mutate(genome_label = gsub('\n', '', genome_label))
+
+seq_order <- funct_annot_COI %>%
+  distinct(seq_id, Host_Genus) %>%
+  arrange(is.na(Host_Genus), Host_Genus, seq_id) %>%
+  distinct(seq_id) %>%
+  pull(seq_id)
+
+genome_seqs <- funct_annot_COI %>%
+  select(seq_id, length, genome_label) %>%
+  distinct() %>%
+  mutate(seq_id = factor(seq_id, levels = seq_order)) %>%
+  arrange(seq_id)
+
+gggenomes(genes = funct_annot_COI, seqs = genome_seqs) +
+  geom_seq() + 
+  geom_seq_label(aes(label = genome_label), size = 3, nudge_y = 0.4) + 
+  geom_gene(aes(fill = fill_group), size = 6, stroke = 0.1, color = "#5A5156") + 
+  scale_fill_manual(values = MyColorsPhrog, breaks = names(phrog_colors)) +
+  geom_gene_tag(aes(label = vf_label, color = "#B40F20"),
+                na.rm = TRUE, size = 2.5, angle = 0, nudge_y = -0.15, vjust = 1, hjust = 0) +
+  geom_gene_tag(aes(label = moron_amg_label, color = "#C075A6"),
+                na.rm = TRUE, size = 2.5,  angle = 0, nudge_y = -0.15, vjust = 1, hjust = 0) +
+  scale_color_identity(guide = "none") +
+  theme(legend.position = "bottom") +
+  labs(fill = "PHROG Categories")
+```
 
 ## Figure S16
-````{r, fig.width = 10, fig.height = 11, fig.align = 'center'}
+```{r, fig.width = 12, fig.height = 7, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
@@ -4534,6 +5402,7 @@ abundances_TPM_pos_only <- Mastertable_viral %>%
 abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
 
 data_plot <- abundances_TPM_pos_only %>%
+  filter(Final_viral == "Good-quality phages") %>%
   group_by(sample_ID, Final_Family) %>%
   summarize(RPK = sum(RPK), .groups = 'drop')
 
@@ -4561,43 +5430,87 @@ counts <- data_plot %>%
 
 x_labels <- setNames(paste0(levels(data_plot$ExaSev), "\nN = ", counts$N), levels(data_plot$ExaSev))
 
-excl_stat <- data_plot %>%
-  group_by(Final_Family, ExaSev) %>%
-  summarize(var = n_distinct(TPM), .groups = "drop") %>%
+excl_fam <- data_plot %>%
   group_by(Final_Family) %>%
-  summarise(n_var = sum(var == 1), .groups = "drop") %>%
-  filter(n_var >= 2) %>%
+  summarise(
+    n_samples = n(),
+    n_detected = sum(TPM > 0),
+    prevalence = n_detected / n_samples) %>%
+  filter(prevalence < 0.02) %>%
   pull(Final_Family)
 
-stat.test <- data_plot %>%
-  filter(!Final_Family %in% excl_stat) %>%
-  group_by(Final_Family) %>%
-  wilcox_test(TPM ~ ExaSev, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position()
+stat_df <- data_plot %>%
+  filter(!Final_Family %in% excl_fam)
+
+phage_families <- unique(stat_df$Final_Family)
+
+stat_results <- lapply(phage_families, function(phage_fam_val) {
+  
+  df <- stat_df %>%
+    filter(Final_Family == phage_fam_val)
+  
+  if (length(unique(df$ExaSev)) < 2) {
+    return(NULL)
+  }
+  
+  model <- glmmTMB(
+    TPM ~ ExaSev + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ ExaSev)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+  
+  pw_cmp_df %>%
+    mutate(
+      Final_Family = phage_fam_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + c(20000, 100000, 180000),
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
 
 ggplot(data_plot, (aes(x=ExaSev, y = TPM))) +
   geom_boxplot(aes(color = Final_Family, fill = Final_Family), width = 0.5, alpha = 0.4, outlier.shape = NA) +
   geom_jitter(aes(color = Final_Family), width = 0.2, height = 0, size = 2, alpha = 0.3) +
   scale_fill_manual(values = MyColorsViralFamilies) +
   scale_color_manual(values = MyColorsViralFamilies) +
-  labs(x = "", y = "TPM") +
+  labs(x = "", y = "Relative Abundance of Phage Families (TPM)") +
   theme_minimal() +
-  theme(text = element_text(size = 8),
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.y = element_blank(),
-    legend.position = "none", 
-    strip.text = element_text(size = 12, margin = margin(b = 28, t = 10))) +
+  theme(text = element_text(size = 12),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        legend.position = "none",
+        strip.text = element_text(size = 12, margin = margin(b = 25, t = 10))) +
   scale_x_discrete(labels = x_labels) +
   scale_y_continuous(labels = comma) +
-  facet_wrap(~Final_Family, scales = "free_x", strip.position = "top", nrow = 6) +
+  facet_wrap(~Final_Family, scales = "free_x", strip.position = "top", ncol = 3) +
   stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
   coord_cartesian(ylim = c(0, 1000000), clip = "off")
-````
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
 
 ## Figure S17
-````{r, fig.width = 10, fig.height = 15, fig.align = 'center'}
+```{r, fig.width = 10, fig.height = 15, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
@@ -4610,7 +5523,7 @@ abundances_TPM_pos_only <- Mastertable_viral %>%
 abundances_TPM_pos_only$RPK <- abundances_TPM_pos_only$mapped_reads/abundances_TPM_pos_only$length
 
 data_plot <- abundances_TPM_pos_only %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   group_by(sample_ID, Final_FamilyN) %>%
   summarize(RPK = sum(RPK), .groups = 'drop')
 
@@ -4638,27 +5551,67 @@ counts <- data_plot %>%
 
 x_labels <- setNames(paste0(levels(data_plot$ExaSev), "\nN = ", counts$N), levels(data_plot$ExaSev))
 
-excl_stat <- data_plot %>%
-  group_by(Final_FamilyN, ExaSev) %>%
-  summarize(var = n_distinct(TPM), .groups = "drop") %>%
+excl_fam <- data_plot %>%
   group_by(Final_FamilyN) %>%
-  summarise(n_var = sum(var == 1), .groups = "drop") %>%
-  filter(n_var >= 2) %>%
+  summarise(
+    n_samples = n(),
+    n_detected = sum(TPM > 0),
+    prevalence = n_detected / n_samples) %>%
+  filter(prevalence < 0.05) %>%
   pull(Final_FamilyN)
 
-stat.test <- data_plot %>% 
-  filter(!Final_FamilyN %in% excl_stat) %>%
-  group_by(Final_FamilyN) %>%
-  wilcox_test(TPM ~ ExaSev, p.adjust.method = "holm", paired = FALSE) %>%
-  add_y_position() %>%
-  mutate(y.position = y.position - 100000)
+stat_df <- data_plot %>%
+  filter(!Final_FamilyN %in% excl_fam)
+
+phage_families <- unique(stat_df$Final_FamilyN)
+
+stat_results <- lapply(phage_families, function(phage_fam_val) {
+  
+  df <- stat_df %>%
+    filter(Final_FamilyN == phage_fam_val)
+  
+  if (length(unique(df$ExaSev)) < 2) {
+    return(NULL)
+  }
+  
+  model <- glmmTMB(
+    TPM ~ ExaSev + (1|PID),
+    family = tweedie(),
+    data = df)
+  
+  sim <- simulateResiduals(model)
+  uniformity_test <- testUniformity(sim, plot = FALSE)
+  dispersion_test <- testDispersion(sim, plot = FALSE)
+  zero_inflation_test <- testZeroInflation(sim, plot = FALSE)
+  
+  max_TPM <- max(df$TPM, na.rm = TRUE)
+  
+  estimated_marginal_means <- emmeans(model, ~ ExaSev)
+  pw_comparisons <- pairs(estimated_marginal_means, adjust = "BH")
+  
+  pw_cmp_df <- as.data.frame(summary(pw_comparisons)) 
+  pw_cmp_df$contrast <- gsub("[()]", "", pw_cmp_df$contrast)
+  
+  pw_cmp_df %>%
+    mutate(
+      Final_FamilyN = phage_fam_val,
+      group1 = sub(" - .*", "", contrast),
+      group2 = sub(".* - ", "", contrast),
+      y.position = max_TPM + c(100000, 200000, 300000),
+      Uniformity_p = uniformity_test$p.value,
+      Dispersion_p = dispersion_test$p.value,
+      ZeroInflation_p = zero_inflation_test$p.value) %>%
+    add_significance(p.col = "p.value", output.col = "p.adj.signif")
+})
+
+stat.test <- bind_rows(stat_results)  
 
 ggplot(data_plot, (aes(x=ExaSev, y = TPM))) +
   geom_boxplot(aes(color = Final_FamilyN, fill = Final_FamilyN), width = 0.5, alpha = 0.4, outlier.shape = NA) +
   geom_jitter(aes(color = Final_FamilyN), width = 0.2, height = 0, size = 2, alpha = 0.3) +
   scale_fill_manual(values = MyColorsPhageFamiliesN) +
   scale_color_manual(values = MyColorsPhageFamiliesN) +
-  labs(x = "", y = "TPM") +
+  labs(x = "", y = "Relative Abundance of Phage Families (TPM)") +
   theme_minimal() +
   theme(text = element_text(size = 6),
     panel.grid.major.x = element_blank(),
@@ -4670,19 +5623,22 @@ ggplot(data_plot, (aes(x=ExaSev, y = TPM))) +
   facet_wrap(~Final_FamilyN, scales = "free_x", strip.position = "top", ncol = 5) +
   stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
   coord_cartesian(ylim = c(0, 1000000), clip = "off")
-````
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
 
 ## Figure S18
-````{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
+```{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(all_of(samples)) %>%
   summarise(across(everything(), sum, na.rm = TRUE)) %>%
   select_if(~ . > 0) %>%
   colnames()
 
 abundances_TPM_pos_only <- Mastertable_viral %>%
-  filter(!Final_viral == "Eukaryotic viruses") %>%
+  filter(Final_viral == "Good-quality phages") %>%
   select(c("CONTIGS", "length"), all_of(samples_with_reads), all_of(grep("^Final", colnames(Mastertable_viral)))) %>%
   pivot_longer(cols = samples_with_reads, names_to = "sample_ID", values_to = "mapped_reads") 
 
@@ -4746,12 +5702,14 @@ sample_size <- data_plot %>%
                        grepl("EXA-EXA", within_or_between_TP_COMP) ~ paste0("EXA-EXA\nN=", N_samples)))
 
 x_labels <- setNames(sample_size$N, sample_size$within_or_between_TP_COMP)
-  
+
+set.seed(123)
 anova <- aov(distance ~ within_or_between_TP_COMP, data = data_plot)
 stat.test <- tukey_hsd(anova) 
 
 y_start <- max(data_plot$distance, na.rm = TRUE) * 1.05
 y_step  <- max(data_plot$distance, na.rm = TRUE) * 0.06
+
 stat.test <- stat.test %>%
   filter(!(group1 == "Within Subjects_STABLE-STABLE" & group2 == "Between Subjects_STABLE-EXA")) %>%
   filter(!(group1 == "Within Subjects_STABLE-STABLE" & group2 == "Between Subjects_EXA-EXA")) %>%
@@ -4765,7 +5723,7 @@ stat.test <- stat.test %>%
 ggplot(data_plot, aes(x = within_or_between_TP_COMP, y = distance)) +
   geom_boxplot(aes(color = TP_COMP, fill = TP_COMP), alpha = 0.4) +
   labs(x = "",
-       y = "Bray-Curtis distance") +
+       y = "Bray-Curtis distance between phageome profiles") +
   scale_color_manual(values = wes_palette("Moonrise3")) +
   scale_fill_manual(values = wes_palette("Moonrise3")) +
   scale_x_discrete(labels = x_labels) +
@@ -4779,10 +5737,13 @@ ggplot(data_plot, aes(x = within_or_between_TP_COMP, y = distance)) +
   annotate("text", x = 2, y = Inf, label = "Within Subjects", vjust = -1, size = 5) +
   annotate("text", x = 5, y = Inf, label = "Between Subjects", vjust = -1, size = 5) +
   coord_cartesian(clip = "off")
-````
+```
+```{r echo=FALSE}
+datatable(stat.test)
+```
 
 ## Figure S19
-````{r, fig.width = 8, fig.height = 10, fig.align = 'center'}
+```{r, fig.width = 8, fig.height = 10, fig.align = 'center'}
 samples_with_reads <- Mastertable_viral %>%
   filter(Final_viral == "Eukaryotic viruses") %>%
   select(all_of(samples)) %>%
@@ -4828,7 +5789,7 @@ data_plot <- data_plot %>%
 
 ggplot(data_plot, aes(x = sample_ID, y = TPM, fill = Final_Family)) +
   geom_bar(stat = "identity") + 
-  labs(x = "", y = "Transcripts Per Kilobase Million (TPM)", fill = "Viral Family")  +
+  labs(x = "", y = "Relative Abundance of Eukaryotic Viral Families in Transcripts Per Kilobase Million (TPM)", fill = "Viral Family")  +
   scale_fill_manual(values= MyColorsViralFamilies, 
                     guide = guide_legend(ncol = 1), drop = TRUE) +
   theme_minimal() +
@@ -4845,5 +5806,5 @@ ggplot(data_plot, aes(x = sample_ID, y = TPM, fill = Final_Family)) +
             size = 1.5, color = "#BD3027") +
   expand_limits(y = -50000) +
   facet_wrap(~PID, scales = "free", ncol = 4)
-````
+```
 
