@@ -45,33 +45,16 @@ print(pckgs)
 metadata <- read.delim("data/METADATA/AERIS_virome_metadata.csv", sep=";", header=T)
 ```
 
-## Generate abundance table
+## Retrieve abundance table
 
 ```{r}
-# Read the abundance text files and store in a list
-abundance_list <- list()
-abundance_files <- dir(path = here("data/ABUNDANCES"), pattern = "*.1000_contigs_95-85.reads_coverage_50.txt", full.names = FALSE)
-for (i in 1: length(abundance_files)){
-  abundance_list[[i]] <- read.delim(here("data/ABUNDANCES", abundance_files[i]))
-}
+abundance_table <- read.delim("data/ABUNDANCES/abundance_table.csv", sep=",", header=T)
 
 # Create 3 lists: all names, samples only, controls only and mock samples only
-names <- sub(pattern = "*.1000_contigs_95-85.reads_coverage_50.txt", "", abundance_files)
+names <- colnames(abundance_table)[-1]
 samples <- names[grep("AERIS", names)]
 controls <- names[grep("PBS", names)]
 mock <- names[grep("MOCK", names)]
-
-# Merge abundances in a table by matching headers
-abundance_table <- merge(abundance_list[[1]], abundance_list[[2]], by="X", all = TRUE) 
-for (i in 1:((length(abundance_list))-2)){
-  abundance_table <- merge(abundance_table, abundance_list [[i+2]], by = "X", all = TRUE)
-}
-colnames(abundance_table)[colnames(abundance_table)=='X'] <- 'CONTIGS'
-abundance_table[is.na(abundance_table)] <- 0
-
-rm(i)
-rm(abundance_files)
-rm(abundance_list)
 ```
 
 ## Generate taxonomy table
