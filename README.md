@@ -7,8 +7,10 @@ This repository contains the code supporting all visualizations presented in the
 ## Repository contents
 
 - [`HPC scripts/`](HPC%20scripts/): Slurm scripts to be executed on high-performance computing cluster, starting from the raw sequencing data and generating the derived data used by the analysis.
+- [`COPD_AERIS_16S.R`](COPD_AERIS_16S.R): R script used to generate the amplicon sequence variant (ASV) and taxonomy tables from the raw 16S rRNA data.
 - [`COPD_AERIS_virome.Rmd`](COPD_AERIS_virome.Rmd): fully executable R Markdown analysis that generates the visualizations.
 - [`COPD_AERIS_virome.html`](COPD_AERIS_virome.html): rendered HTML version of the analysis.
+
 
 ## Reproducing the visualizations
 
