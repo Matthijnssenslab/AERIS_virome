@@ -1,4 +1,4 @@
-# AERIS virome visualizations
+# AERIS virome
 
 This repository contains the code supporting all visualizations presented in the paper:
 
@@ -8,7 +8,7 @@ This repository contains the code supporting all visualizations presented in the
 
 - [`HPC scripts/`](HPC%20scripts/): Slurm scripts to be executed on high-performance computing cluster, starting from the raw sequencing data and generating the derived data used by the analysis.
 - [`COPD_AERIS_virome.Rmd`](COPD_AERIS_virome.Rmd): fully executable R Markdown analysis that generates the visualizations.
-- `COPD_AERIS_virome.html`: rendered HTML version of the analysis. 
+- [`COPD_AERIS_virome.html`](COPD_AERIS_virome.html): rendered HTML version of the analysis.
 
 ## Reproducing the visualizations
 
