@@ -161,6 +161,8 @@ taxonomy_table$Final_Tool[taxonomy_table$Diamond_Classification == "Archaea" & t
 taxonomy_table$Final_Tool[taxonomy_table$Diamond_Classification == "Unknown" & taxonomy_table$Final_Tool == "1"] <- "Diamond"
 taxonomy_table$Final_Tool[taxonomy_table$Genomad_Classification == "Unknown" & taxonomy_table$Final_Tool == "1"] <- "Genomad"
 
+taxonomy_table$Final_Tool[taxonomy_table$CONTIGS == "NODE_A18_length_3096_cov_0.996033_AERISVIR409"] <- "Diamond"
+
 for (i in 1:(length(levels))) {
     final_level <- paste0("Final", "_", levels[i])
     diamond_level <- paste0("Diamond", "_", levels[i])
@@ -1221,7 +1223,7 @@ x_labels <- setNames(sample_size$N, sample_size$Exa_or_stable)
 
 ggplot(data = data_summary, aes(x = Exa_or_stable, y = mean, fill = Final_Family)) +
   geom_bar(stat = "identity") + 
-  scale_y_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0), labels = comma) +  
   labs(x = "", y = "Relative Abundance of Eukaryotic Viral Families\nin Transcripts Per Kilobase Million (TPM)", fill = "Viral Family")  +
   scale_fill_manual(values=MyColorsViralFamilies, drop = TRUE) +
   scale_x_discrete(labels = x_labels) +
@@ -1762,7 +1764,7 @@ ggplot(data_plot, aes(x = FEVPC, y = observed_richness, color = CURRCOPD)) +
   scale_color_manual(values = MyColorsSeverity) +
   geom_smooth(method = "lm", se = TRUE, color = "#5A5156", linetype = "dashed", na.rm = TRUE) +
   labs(x = "FEV1 (% predicted)", y = "Observed Richness\nof Phage OTUs") +
-  scale_y_continuous(breaks = seq(0, 10, by = 2)) +
+  scale_y_continuous(limits = c(0, 10), breaks = seq(0, 10, by = 2)) +
   theme_minimal() +
   theme(panel.grid.major.y = element_line(size = 1.2),
         legend.title = element_blank(),
@@ -1771,9 +1773,6 @@ ggplot(data_plot, aes(x = FEVPC, y = observed_richness, color = CURRCOPD)) +
            label = paste0("Negative binomial mixed-effects model:\nIRR = ", round(IRR, 2), 
                           " (95% CI = ", round(CI_IRR[1], 2), "-", round(CI_IRR[2], 2), "), p = ", round(p, 3)), 
            hjust = 1.1, vjust = 5) 
-```
-```{r echo=FALSE}
-datatable(stat.test)
 ```
 
 ```{r, fig.width = 6, fig.height = 5, fig.align = 'center'}
@@ -1799,7 +1798,7 @@ ggplot(data_plot, aes(x = FEVPC, y = shannon_diversity, color = CURRCOPD)) +
   geom_smooth(method = "lm", se = TRUE, color = "#5A5156", linetype = "dashed", na.rm = TRUE) +
   labs(x = "FEV1 (% predicted)", y = "Shannon Diversity Index\nof Phage OTUs") +
   theme_minimal() +
-  scale_y_continuous(breaks = seq(0, 2, by = 0.5)) +
+  scale_y_continuous(limits = c(0, 2), breaks = seq(0, 2, by = 0.5)) +
   theme(panel.grid.major.y = element_line(size = 1.2),
         legend.title = element_blank(),
         legend.position = "bottom") +
@@ -1807,9 +1806,6 @@ ggplot(data_plot, aes(x = FEVPC, y = shannon_diversity, color = CURRCOPD)) +
            label = paste0("Tweedie GLMM:\nIRR = ", round(IRR, 2), 
                           " (95% CI = ", round(CI_IRR[1], 2), "-", round(CI_IRR[2], 2), "), p = ", round(p, 3)), 
            hjust = 1.1, vjust = 5) 
-```
-```{r echo=FALSE}
-datatable(stat.test)
 ```
 
 ## Figure 4
@@ -2027,6 +2023,9 @@ ggplot(data_plot, (aes(x=CURRCOPD, y = TPM))) +
   facet_wrap(~Host_Genus, scales = "free_x", ncol = 4) +
   stat_pvalue_manual(stat.test, label = "p.adj.signif", hide.ns = TRUE, tip.length = 0) +
   coord_cartesian(ylim = c(0, 1000000), clip = "off")
+```
+```{r echo=FALSE}
+datatable(stat.test)
 ```
 
 ### Figure 4c
@@ -2409,7 +2408,7 @@ x_labels <- setNames(sample_size$N, sample_size$Exa_or_stable_ExaSev)
 ggplot(data = data_summary, aes(x = Exa_or_stable_ExaSev, y = mean, fill = Final_FamilyN)) +
   geom_bar(stat = "identity") + 
   geom_text(aes(label = AAI_number), position = position_stack(vjust = 0.5), size = 2, color = "black")+
-  scale_y_continuous(expand=c(0,0)) +
+  scale_y_continuous(labels = comma, expand=c(0,0)) +
   labs(x = "", y = "Relative Abundance of Phage Family-Clusters\nin Transcripts Per Kilobase Million (TPM)", fill = "Phage Family")  +
   scale_fill_manual(values=MyColorsPhageFamiliesN, guide = guide_legend(ncol = 3)) +
   scale_x_discrete(labels = x_labels) + 
@@ -2761,6 +2760,9 @@ ggplot(data = plot_data, aes(x = value, y = rowname, fill = variable)) +
   ) +
   scale_x_break(c(0.04, 0.43), symbol = c("//"), space = 0.2) +
   scale_alpha_continuous(range = c(0.5, 1), limits = c(0, 1))
+```
+```{r echo=FALSE}
+datatable(out)
 ```
 
 ### Figure 6c
@@ -3185,6 +3187,7 @@ ggplot(data_plot, aes(x = TPM, y = sample_ID, fill = Final_Family)) +
         panel.grid.minor = element_blank(),
         panel.spacing = unit(0.5, "cm")) +
   scale_y_discrete(limits = rev) +
+  scale_x_continuous(labels = comma) +
   facet_wrap(~ facet_group, scales = "free", 
              labeller = labeller(facet_group = facet_names))
 ```
@@ -5723,5 +5726,6 @@ ggplot(data_plot, aes(x = sample_ID, y = TPM, fill = Final_Family)) +
                 label = ifelse(Exa_or_stable == "Exacerbated_state", EXATypeDescPCR_EOSBLD2, "")), 
             size = 1.5, color = "#BD3027") +
   expand_limits(y = -50000) +
+  scale_y_continuous(labels = comma) +
   facet_wrap(~PID, scales = "free", ncol = 4)
 ```
