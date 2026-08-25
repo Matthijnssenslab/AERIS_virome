@@ -17,4 +17,4 @@ mkdir -p PHAGE_ANNOTATION && cd PHAGE_ANNOTATION
 mkdir -p HOST_PREDICTION && cd HOST_PREDICTION
 
 iphop predict --fa_file ../../VIRAL_CLASSIFICATION/PHAGES_AAI_SHARED_GENES/$study.1000_phagesGQ_95-85.fasta \
-	--db_dir /path/to/iphop_db/Jun_2025_pub_rw -t 12
+	--db_dir /path/to/iphop_db/Aug_2023_pub_rw -t 12
