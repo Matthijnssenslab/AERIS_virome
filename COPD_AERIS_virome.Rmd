@@ -88,7 +88,7 @@ taxonomy_table <- merge(taxonomy_table, Taxonomy_Genomad, by = "CONTIGS", all = 
 ### Identify eukaryotic viruses and phages based on ICTV's host source
 
 ```{r}
-ICTV_taxa <- read_excel("data/VMR_MSL39.v4_20241106.xlsx", "VMR MSL39", col_types = "text")
+ICTV_taxa <- read_excel("data/VIRAL_CLASSIFICATION/VMR_MSL39.v4_20241106.xlsx", "VMR MSL39", col_types = "text")
 ICTV_ranks <- c("Realm","Subrealm","Kingdom","Subkingdom","Phylum","Subphylum","Class","Subclass","Order","Suborder","Family","Subfamily","Genus","Subgenus","Species")
 
 ICTV_phages_taxa <- ICTV_taxa[ICTV_taxa$`Host source` %in% c("bacteria", "bacteria, vertebrates (S)", "bacteria, invertebrates (S)"),]
